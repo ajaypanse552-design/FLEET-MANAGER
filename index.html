@@ -1,0 +1,1161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Fleet Manager — Logistics Dashboard</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  :root {
+    --bg: #0d0f14;
+    --surface: #151820;
+    --surface2: #1c202c;
+    --border: rgba(255,255,255,0.07);
+    --border2: rgba(255,255,255,0.13);
+    --text: #f0f2f8;
+    --muted: #7a809a;
+    --accent: #4f8ef7;
+    --accent2: #7c3aed;
+    --green: #22c55e;
+    --amber: #f59e0b;
+    --red: #ef4444;
+    --cyan: #06b6d4;
+    --font-head: 'Syne', sans-serif;
+    --font-body: 'DM Sans', sans-serif;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-body);
+    min-height: 100vh;
+    font-size: 14px;
+  }
+
+  /* SIDEBAR */
+  .sidebar {
+    position: fixed; left: 0; top: 0; bottom: 0;
+    width: 220px;
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    display: flex; flex-direction: column;
+    z-index: 100;
+  }
+  .logo {
+    padding: 24px 20px 20px;
+    border-bottom: 1px solid var(--border);
+  }
+  .logo h1 {
+    font-family: var(--font-head);
+    font-size: 18px; font-weight: 700;
+    color: var(--text);
+    letter-spacing: -0.3px;
+  }
+  .logo span { color: var(--accent); }
+  .logo p { font-size: 11px; color: var(--muted); margin-top: 2px; letter-spacing: 0.5px; text-transform: uppercase; }
+
+  nav { flex: 1; padding: 16px 10px; }
+  .nav-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 12px; border-radius: 8px;
+    cursor: pointer; font-size: 13px; font-weight: 500;
+    color: var(--muted); transition: all 0.15s;
+    margin-bottom: 2px;
+  }
+  .nav-item:hover { background: var(--surface2); color: var(--text); }
+  .nav-item.active { background: rgba(79,142,247,0.12); color: var(--accent); }
+  .nav-item svg { width: 16px; height: 16px; flex-shrink: 0; }
+
+  .sidebar-footer { padding: 16px; border-top: 1px solid var(--border); }
+  .today-badge {
+    background: rgba(34,197,94,0.1);
+    border: 1px solid rgba(34,197,94,0.2);
+    border-radius: 6px; padding: 8px 12px;
+    font-size: 12px; color: var(--green);
+    font-weight: 500;
+  }
+
+  /* MAIN */
+  .main { margin-left: 220px; padding: 28px; min-height: 100vh; }
+
+  .page { display: none; }
+  .page.active { display: block; }
+
+  /* TOPBAR */
+  .topbar {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 28px;
+  }
+  .topbar h2 { font-family: var(--font-head); font-size: 22px; font-weight: 700; }
+  .topbar-actions { display: flex; gap: 10px; align-items: center; }
+
+  /* BUTTONS */
+  .btn {
+    display: inline-flex; align-items: center; gap: 7px;
+    padding: 9px 16px; border-radius: 8px; border: none;
+    font-family: var(--font-body); font-size: 13px; font-weight: 500;
+    cursor: pointer; transition: all 0.15s;
+  }
+  .btn svg { width: 15px; height: 15px; }
+  .btn-primary { background: var(--accent); color: #fff; }
+  .btn-primary:hover { background: #3a7de8; }
+  .btn-success { background: var(--green); color: #fff; }
+  .btn-success:hover { background: #16a34a; }
+  .btn-ghost {
+    background: var(--surface2); color: var(--text);
+    border: 1px solid var(--border2);
+  }
+  .btn-ghost:hover { background: #252a38; }
+  .btn-danger { background: rgba(239,68,68,0.15); color: var(--red); border: 1px solid rgba(239,68,68,0.25); }
+  .btn-danger:hover { background: rgba(239,68,68,0.25); }
+
+  /* STAT CARDS */
+  .stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 16px; margin-bottom: 28px;
+  }
+  .stat-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px; padding: 18px;
+  }
+  .stat-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 8px; }
+  .stat-value { font-family: var(--font-head); font-size: 26px; font-weight: 700; }
+  .stat-sub { font-size: 11px; color: var(--muted); margin-top: 4px; }
+  .stat-running .stat-value { color: var(--green); }
+  .stat-loading .stat-value { color: var(--amber); }
+  .stat-idle .stat-value { color: var(--muted); }
+  .stat-total .stat-value { color: var(--accent); }
+
+  /* VEHICLE CARDS GRID */
+  .vehicles-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(290px, 1fr));
+    gap: 16px;
+  }
+  .vehicle-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px; padding: 18px;
+    transition: border-color 0.2s;
+    cursor: pointer;
+  }
+  .vehicle-card:hover { border-color: var(--border2); }
+  .vehicle-card.running { border-left: 3px solid var(--green); }
+  .vehicle-card.loading { border-left: 3px solid var(--amber); }
+  .vehicle-card.idle { border-left: 3px solid var(--muted); }
+
+  .vc-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+  .vc-num { font-family: var(--font-head); font-size: 15px; font-weight: 700; letter-spacing: 0.3px; }
+  .status-badge {
+    font-size: 10px; font-weight: 600; padding: 3px 10px;
+    border-radius: 20px; text-transform: uppercase; letter-spacing: 0.5px;
+  }
+  .badge-running { background: rgba(34,197,94,0.12); color: var(--green); }
+  .badge-loading { background: rgba(245,158,11,0.12); color: var(--amber); }
+  .badge-idle { background: rgba(122,128,154,0.12); color: var(--muted); }
+
+  .vc-dest { font-size: 12px; color: var(--muted); margin-bottom: 12px; display: flex; align-items: center; gap: 5px; }
+  .vc-dest svg { width: 12px; height: 12px; }
+
+  .vc-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px; }
+  .vc-stat { background: var(--surface2); border-radius: 6px; padding: 8px 10px; }
+  .vc-stat-label { font-size: 10px; color: var(--muted); margin-bottom: 2px; }
+  .vc-stat-val { font-size: 13px; font-weight: 600; }
+
+  .vc-actions { display: flex; gap: 8px; }
+  .vc-btn {
+    flex: 1; padding: 7px; border-radius: 6px; border: 1px solid var(--border2);
+    background: var(--surface2); color: var(--text); font-size: 12px;
+    cursor: pointer; font-family: var(--font-body); font-weight: 500;
+    transition: all 0.15s;
+  }
+  .vc-btn:hover { background: #252a38; }
+
+  /* TABLE */
+  .table-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+  .table-header { padding: 16px 20px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
+  .table-header h3 { font-family: var(--font-head); font-size: 15px; font-weight: 600; }
+
+  table { width: 100%; border-collapse: collapse; }
+  th {
+    text-align: left; padding: 12px 16px;
+    font-size: 11px; color: var(--muted); font-weight: 600;
+    text-transform: uppercase; letter-spacing: 0.5px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface2);
+  }
+  td { padding: 12px 16px; border-bottom: 1px solid var(--border); font-size: 13px; vertical-align: middle; }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: rgba(255,255,255,0.02); }
+
+  /* MODAL */
+  .modal-overlay {
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.75);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 1000; opacity: 0; pointer-events: none;
+    transition: opacity 0.2s;
+  }
+  .modal-overlay.open { opacity: 1; pointer-events: all; }
+  .modal {
+    background: var(--surface);
+    border: 1px solid var(--border2);
+    border-radius: 16px; padding: 28px;
+    width: 540px; max-width: 95vw;
+    max-height: 90vh; overflow-y: auto;
+    transform: translateY(20px);
+    transition: transform 0.2s;
+  }
+  .modal-overlay.open .modal { transform: translateY(0); }
+  .modal-title { font-family: var(--font-head); font-size: 18px; font-weight: 700; margin-bottom: 20px; }
+  .modal-close {
+    position: absolute; top: 20px; right: 20px;
+    background: none; border: none; color: var(--muted);
+    cursor: pointer; font-size: 20px;
+  }
+
+  /* FORM */
+  .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .form-group { display: flex; flex-direction: column; gap: 6px; }
+  .form-group.full { grid-column: 1 / -1; }
+  label { font-size: 12px; color: var(--muted); font-weight: 500; text-transform: uppercase; letter-spacing: 0.4px; }
+  input, select, textarea {
+    background: var(--surface2); border: 1px solid var(--border2);
+    border-radius: 8px; padding: 10px 12px;
+    color: var(--text); font-family: var(--font-body);
+    font-size: 13px; outline: none;
+    transition: border-color 0.15s;
+  }
+  input:focus, select:focus, textarea:focus { border-color: var(--accent); }
+  textarea { resize: vertical; min-height: 60px; }
+  select option { background: var(--surface2); }
+
+  .status-select-wrap { display: flex; gap: 8px; }
+  .status-opt {
+    flex: 1; padding: 9px; border-radius: 8px;
+    border: 1px solid var(--border2); background: var(--surface2);
+    color: var(--muted); font-size: 12px; font-weight: 600;
+    cursor: pointer; text-align: center; transition: all 0.15s;
+    text-transform: uppercase; letter-spacing: 0.4px;
+  }
+  .status-opt.sel-running { background: rgba(34,197,94,0.12); border-color: rgba(34,197,94,0.3); color: var(--green); }
+  .status-opt.sel-loading { background: rgba(245,158,11,0.12); border-color: rgba(245,158,11,0.3); color: var(--amber); }
+  .status-opt.sel-idle { background: rgba(122,128,154,0.12); border-color: rgba(122,128,154,0.3); color: var(--muted); }
+
+  /* FILTER BAR */
+  .filter-bar { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
+  .filter-bar input { flex: 1; min-width: 180px; max-width: 300px; }
+  .filter-bar select { min-width: 140px; }
+
+  /* MONTH PICKER */
+  .month-export { display: flex; align-items: center; gap: 10px; }
+
+  /* TOTALS ROW */
+  .totals-row td { font-weight: 700; color: var(--accent); background: rgba(79,142,247,0.05) !important; border-top: 1px solid var(--border2); }
+
+  /* ALERT */
+  .alert {
+    position: fixed; bottom: 24px; right: 24px;
+    background: var(--green); color: #fff;
+    padding: 12px 20px; border-radius: 10px;
+    font-size: 13px; font-weight: 500;
+    transform: translateY(80px); transition: transform 0.3s;
+    z-index: 9999;
+  }
+  .alert.show { transform: translateY(0); }
+  .alert.error { background: var(--red); }
+
+  /* EMPTY STATE */
+  .empty { text-align: center; padding: 60px 20px; color: var(--muted); }
+  .empty svg { width: 48px; height: 48px; margin-bottom: 12px; opacity: 0.3; }
+
+  /* PULSE ANIMATION */
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+  .live-dot {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: var(--green); display: inline-block;
+    animation: pulse 2s infinite; margin-right: 5px;
+  }
+
+  /* SCROLLBAR */
+  ::-webkit-scrollbar { width: 5px; height: 5px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 3px; }
+
+  /* RESPONSIVE */
+  @media(max-width: 768px) {
+    .sidebar { width: 60px; }
+    .sidebar .logo h1, .sidebar .logo p, nav .nav-label, .sidebar-footer { display: none; }
+    .main { margin-left: 60px; padding: 16px; }
+    .form-grid { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<!-- SIDEBAR -->
+<aside class="sidebar">
+  <div class="logo">
+    <h1>Fleet<span>Pro</span></h1>
+    <p>Logistics Manager</p>
+  </div>
+  <nav>
+    <div class="nav-item active" onclick="showPage('dashboard')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+      <span class="nav-label">Dashboard</span>
+    </div>
+    <div class="nav-item" onclick="showPage('vehicles')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="10" width="22" height="8" rx="2"/><path d="M5 10V7a2 2 0 012-2h10a2 2 0 012 2v3"/><circle cx="7" cy="18" r="2"/><circle cx="17" cy="18" r="2"/></svg>
+      <span class="nav-label">Vehicles</span>
+    </div>
+    <div class="nav-item" onclick="showPage('entries')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14,2 14,8 20,8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+      <span class="nav-label">Daily Entries</span>
+    </div>
+    <div class="nav-item" onclick="showPage('reports')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+      <span class="nav-label">Reports</span>
+    </div>
+  </nav>
+  <div class="sidebar-footer">
+    <div class="today-badge">
+      <span class="live-dot"></span>
+      <span id="live-time"></span>
+    </div>
+  </div>
+</aside>
+
+<!-- MAIN CONTENT -->
+<main class="main">
+
+  <!-- DASHBOARD PAGE -->
+  <div id="page-dashboard" class="page active">
+    <div class="topbar">
+      <h2>Dashboard</h2>
+      <div class="topbar-actions">
+        <button class="btn btn-primary" onclick="openEntryModal()">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
+          Add Entry
+        </button>
+      </div>
+    </div>
+
+    <div class="stats-grid">
+      <div class="stat-card stat-total">
+        <div class="stat-label">Total Vehicles</div>
+        <div class="stat-value" id="stat-total">0</div>
+        <div class="stat-sub">Registered fleet</div>
+      </div>
+      <div class="stat-card stat-running">
+        <div class="stat-label">Running</div>
+        <div class="stat-value" id="stat-running">0</div>
+        <div class="stat-sub">On the road</div>
+      </div>
+      <div class="stat-card stat-loading">
+        <div class="stat-label">Loading</div>
+        <div class="stat-value" id="stat-loading">0</div>
+        <div class="stat-sub">At depot/site</div>
+      </div>
+      <div class="stat-card stat-idle">
+        <div class="stat-label">Idle</div>
+        <div class="stat-value" id="stat-idle">0</div>
+        <div class="stat-sub">Not active</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Today's Diesel (L)</div>
+        <div class="stat-value" id="stat-diesel" style="color:var(--cyan)">0</div>
+        <div class="stat-sub">All vehicles today</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Today's Cash (₹)</div>
+        <div class="stat-value" id="stat-cash" style="color:var(--accent2)">0</div>
+        <div class="stat-sub">All vehicles today</div>
+      </div>
+    </div>
+
+    <div class="vehicles-grid" id="dashboard-vehicles"></div>
+  </div>
+
+  <!-- VEHICLES PAGE -->
+  <div id="page-vehicles" class="page">
+    <div class="topbar">
+      <h2>Vehicles</h2>
+      <button class="btn btn-primary" onclick="openVehicleModal()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        Add Vehicle
+      </button>
+    </div>
+    <div class="table-wrap">
+      <div class="table-header">
+        <h3>Registered Fleet</h3>
+        <span style="font-size:12px;color:var(--muted)"><span class="live-dot"></span>Live status</span>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Vehicle Number</th>
+            <th>Type</th>
+            <th>Status</th>
+            <th>Last Destination</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="vehicles-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ENTRIES PAGE -->
+  <div id="page-entries" class="page">
+    <div class="topbar">
+      <h2>Daily Entries</h2>
+      <div class="topbar-actions">
+        <button class="btn btn-primary" onclick="openEntryModal()">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          New Entry
+        </button>
+      </div>
+    </div>
+
+    <div class="filter-bar">
+      <input type="date" id="filter-date" onchange="renderEntries()" placeholder="Filter by date">
+      <select id="filter-vehicle" onchange="renderEntries()">
+        <option value="">All Vehicles</option>
+      </select>
+      <button class="btn btn-ghost" onclick="clearFilters()">Clear</button>
+    </div>
+
+    <div class="table-wrap">
+      <div class="table-header">
+        <h3>Entry Log</h3>
+        <button class="btn btn-success" onclick="openExportModal()">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/><path d="M16 13H8M16 17H8M10 9H8"/></svg>
+          Export Excel
+        </button>
+      </div>
+      <div style="overflow-x:auto">
+        <table>
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Vehicle</th>
+              <th>Destination</th>
+              <th>Diesel (L)</th>
+              <th>Cash (₹)</th>
+              <th>PhonePe (₹)</th>
+              <th>Extra (₹)</th>
+              <th>Remarks</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="entries-tbody"></tbody>
+          <tfoot id="entries-tfoot"></tfoot>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- REPORTS PAGE -->
+  <div id="page-reports" class="page">
+    <div class="topbar">
+      <h2>Monthly Reports</h2>
+    </div>
+    <div class="month-export" style="margin-bottom:24px;">
+      <select id="report-month" style="min-width:160px;">
+        <option value="">Select Month</option>
+      </select>
+      <select id="report-year" style="min-width:100px;"></select>
+      <button class="btn btn-success" onclick="exportExcel()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:15px;height:15px;"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+        Download Excel
+      </button>
+    </div>
+    <div id="report-table-wrap" class="table-wrap">
+      <div class="table-header"><h3>Monthly Summary</h3></div>
+      <div style="overflow-x:auto">
+        <table>
+          <thead>
+            <tr>
+              <th>Date</th><th>Vehicle</th><th>Destination</th>
+              <th>Diesel (L)</th><th>Cash (₹)</th><th>PhonePe (₹)</th>
+              <th>Extra (₹)</th><th>Total ₹</th><th>Remarks</th>
+            </tr>
+          </thead>
+          <tbody id="report-tbody"></tbody>
+          <tfoot id="report-tfoot"></tfoot>
+        </table>
+      </div>
+    </div>
+  </div>
+
+</main>
+
+<!-- MODALS -->
+
+<!-- Add Vehicle Modal -->
+<div class="modal-overlay" id="vehicle-modal">
+  <div class="modal" style="position:relative">
+    <button class="modal-close" onclick="closeModal('vehicle-modal')">×</button>
+    <div class="modal-title">Add Vehicle</div>
+    <div class="form-grid">
+      <div class="form-group full">
+        <label>Vehicle Number</label>
+        <input type="text" id="v-number" placeholder="e.g. GJ01AB1234" style="text-transform:uppercase">
+      </div>
+      <div class="form-group">
+        <label>Vehicle Type</label>
+        <select id="v-type">
+          <option value="Truck">Truck</option>
+          <option value="Trailer">Trailer</option>
+          <option value="Mini Truck">Mini Truck</option>
+          <option value="Pickup">Pickup</option>
+          <option value="Other">Other</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Initial Status</label>
+        <select id="v-status">
+          <option value="idle">Idle</option>
+          <option value="running">Running</option>
+          <option value="loading">Loading</option>
+        </select>
+      </div>
+    </div>
+    <div style="margin-top:20px;display:flex;gap:10px;justify-content:flex-end;">
+      <button class="btn btn-ghost" onclick="closeModal('vehicle-modal')">Cancel</button>
+      <button class="btn btn-primary" onclick="addVehicle()">Add Vehicle</button>
+    </div>
+  </div>
+</div>
+
+<!-- Add Entry Modal -->
+<div class="modal-overlay" id="entry-modal">
+  <div class="modal" style="position:relative">
+    <button class="modal-close" onclick="closeModal('entry-modal')">×</button>
+    <div class="modal-title" id="entry-modal-title">New Daily Entry</div>
+    <div class="form-grid">
+      <div class="form-group">
+        <label>Date</label>
+        <input type="date" id="e-date">
+      </div>
+      <div class="form-group">
+        <label>Vehicle</label>
+        <select id="e-vehicle"></select>
+      </div>
+      <div class="form-group full">
+        <label>Destination</label>
+        <input type="text" id="e-dest" placeholder="City / Route">
+      </div>
+      <div class="form-group full">
+        <label>Status</label>
+        <div class="status-select-wrap">
+          <div class="status-opt" id="opt-running" onclick="selectStatus('running')">🟢 Running</div>
+          <div class="status-opt" id="opt-loading" onclick="selectStatus('loading')">🟡 Loading</div>
+          <div class="status-opt" id="opt-idle" onclick="selectStatus('idle')">⚫ Idle</div>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Diesel (Litres)</label>
+        <input type="number" id="e-diesel" placeholder="0" min="0" step="0.5">
+      </div>
+      <div class="form-group">
+        <label>Cash (₹)</label>
+        <input type="number" id="e-cash" placeholder="0" min="0">
+      </div>
+      <div class="form-group">
+        <label>PhonePe (₹)</label>
+        <input type="number" id="e-phonepe" placeholder="0" min="0">
+      </div>
+      <div class="form-group">
+        <label>Extra (₹)</label>
+        <input type="number" id="e-extra" placeholder="0" min="0">
+      </div>
+      <div class="form-group full">
+        <label>Remarks</label>
+        <textarea id="e-remarks" placeholder="Any notes..."></textarea>
+      </div>
+    </div>
+    <div style="margin-top:20px;display:flex;gap:10px;justify-content:flex-end;">
+      <button class="btn btn-ghost" onclick="closeModal('entry-modal')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveEntry()">Save Entry</button>
+    </div>
+  </div>
+</div>
+
+<!-- Export Modal -->
+<div class="modal-overlay" id="export-modal">
+  <div class="modal" style="position:relative">
+    <button class="modal-close" onclick="closeModal('export-modal')">×</button>
+    <div class="modal-title">Export to Excel</div>
+    <div class="form-grid">
+      <div class="form-group">
+        <label>Month</label>
+        <select id="exp-month">
+          <option value="0">January</option><option value="1">February</option>
+          <option value="2">March</option><option value="3">April</option>
+          <option value="4">May</option><option value="5">June</option>
+          <option value="6">July</option><option value="7">August</option>
+          <option value="8">September</option><option value="9">October</option>
+          <option value="10">November</option><option value="11">December</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Year</label>
+        <select id="exp-year"></select>
+      </div>
+      <div class="form-group">
+        <label>Vehicle (optional)</label>
+        <select id="exp-vehicle">
+          <option value="">All Vehicles</option>
+        </select>
+      </div>
+    </div>
+    <div style="margin-top:20px;display:flex;gap:10px;justify-content:flex-end;">
+      <button class="btn btn-ghost" onclick="closeModal('export-modal')">Cancel</button>
+      <button class="btn btn-success" onclick="exportExcel()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:15px;height:15px;"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+        Download Excel
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- Alert -->
+<div class="alert" id="alert"></div>
+
+<script>
+// ============ DATA STORE ============
+let vehicles = JSON.parse(localStorage.getItem('fleet_vehicles') || '[]');
+let entries = JSON.parse(localStorage.getItem('fleet_entries') || '[]');
+let editEntryId = null;
+let selectedStatus = 'running';
+
+function save() {
+  localStorage.setItem('fleet_vehicles', JSON.stringify(vehicles));
+  localStorage.setItem('fleet_entries', JSON.stringify(entries));
+}
+
+// ============ NAVIGATION ============
+function showPage(page) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.getElementById('page-' + page).classList.add('active');
+  const navItems = document.querySelectorAll('.nav-item');
+  const pages = ['dashboard', 'vehicles', 'entries', 'reports'];
+  navItems[pages.indexOf(page)]?.classList.add('active');
+  if (page === 'dashboard') renderDashboard();
+  if (page === 'vehicles') renderVehiclesTable();
+  if (page === 'entries') renderEntries();
+  if (page === 'reports') renderReports();
+}
+
+// ============ LIVE CLOCK ============
+function updateClock() {
+  const now = new Date();
+  document.getElementById('live-time').textContent =
+    now.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+}
+setInterval(updateClock, 1000);
+updateClock();
+
+// ============ ALERT ============
+function showAlert(msg, type = 'success') {
+  const el = document.getElementById('alert');
+  el.textContent = msg;
+  el.className = 'alert' + (type === 'error' ? ' error' : '');
+  el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), 2800);
+}
+
+// ============ MODAL ============
+function openModal(id) {
+  document.getElementById(id).classList.add('open');
+}
+function closeModal(id) {
+  document.getElementById(id).classList.remove('open');
+}
+document.querySelectorAll('.modal-overlay').forEach(m => {
+  m.addEventListener('click', e => { if (e.target === m) m.classList.remove('open'); });
+});
+
+// ============ VEHICLE MODAL ============
+function openVehicleModal() { openModal('vehicle-modal'); }
+function addVehicle() {
+  const num = document.getElementById('v-number').value.trim().toUpperCase();
+  if (!num) { showAlert('Enter vehicle number!', 'error'); return; }
+  if (vehicles.find(v => v.number === num)) { showAlert('Vehicle already exists!', 'error'); return; }
+  vehicles.push({ id: Date.now(), number: num, type: document.getElementById('v-type').value, status: document.getElementById('v-status').value, dest: '' });
+  save();
+  closeModal('vehicle-modal');
+  showAlert('Vehicle added!');
+  renderDashboard();
+  populateVehicleSelects();
+  document.getElementById('v-number').value = '';
+}
+
+// ============ ENTRY MODAL ============
+function openEntryModal(entryId = null) {
+  editEntryId = entryId;
+  const today = new Date().toISOString().split('T')[0];
+  document.getElementById('entry-modal-title').textContent = entryId ? 'Edit Entry' : 'New Daily Entry';
+
+  if (entryId) {
+    const e = entries.find(x => x.id === entryId);
+    document.getElementById('e-date').value = e.date;
+    document.getElementById('e-vehicle').value = e.vehicleId;
+    document.getElementById('e-dest').value = e.dest;
+    document.getElementById('e-diesel').value = e.diesel || '';
+    document.getElementById('e-cash').value = e.cash || '';
+    document.getElementById('e-phonepe').value = e.phonepe || '';
+    document.getElementById('e-extra').value = e.extra || '';
+    document.getElementById('e-remarks').value = e.remarks || '';
+    selectedStatus = e.status || 'running';
+  } else {
+    document.getElementById('e-date').value = today;
+    document.getElementById('e-dest').value = '';
+    document.getElementById('e-diesel').value = '';
+    document.getElementById('e-cash').value = '';
+    document.getElementById('e-phonepe').value = '';
+    document.getElementById('e-extra').value = '';
+    document.getElementById('e-remarks').value = '';
+    selectedStatus = 'running';
+    if (vehicles.length) document.getElementById('e-vehicle').value = vehicles[0].id;
+  }
+  updateStatusUI();
+  openModal('entry-modal');
+}
+
+function selectStatus(s) { selectedStatus = s; updateStatusUI(); }
+function updateStatusUI() {
+  ['running','loading','idle'].forEach(s => {
+    document.getElementById('opt-'+s).className = 'status-opt' + (selectedStatus===s ? ' sel-'+s : '');
+  });
+}
+
+function saveEntry() {
+  const vehicleId = parseInt(document.getElementById('e-vehicle').value);
+  const vehicle = vehicles.find(v => v.id === vehicleId);
+  if (!vehicle) { showAlert('Select a vehicle!', 'error'); return; }
+  const date = document.getElementById('e-date').value;
+  if (!date) { showAlert('Select a date!', 'error'); return; }
+
+  const entry = {
+    id: editEntryId || Date.now(),
+    date, vehicleId,
+    vehicleNum: vehicle.number,
+    dest: document.getElementById('e-dest').value.trim(),
+    status: selectedStatus,
+    diesel: parseFloat(document.getElementById('e-diesel').value) || 0,
+    cash: parseFloat(document.getElementById('e-cash').value) || 0,
+    phonepe: parseFloat(document.getElementById('e-phonepe').value) || 0,
+    extra: parseFloat(document.getElementById('e-extra').value) || 0,
+    remarks: document.getElementById('e-remarks').value.trim()
+  };
+
+  // Update vehicle status & destination
+  vehicle.status = selectedStatus;
+  vehicle.dest = entry.dest;
+
+  if (editEntryId) {
+    entries = entries.map(e => e.id === editEntryId ? entry : e);
+  } else {
+    entries.push(entry);
+  }
+  save();
+  closeModal('entry-modal');
+  showAlert(editEntryId ? 'Entry updated!' : 'Entry saved!');
+  editEntryId = null;
+  renderDashboard();
+  renderEntries();
+  renderVehiclesTable();
+}
+
+function deleteEntry(id) {
+  if (!confirm('Delete this entry?')) return;
+  entries = entries.filter(e => e.id !== id);
+  save();
+  renderEntries();
+  renderDashboard();
+  showAlert('Entry deleted!', 'error');
+}
+
+// ============ POPULATE SELECTS ============
+function populateVehicleSelects() {
+  const selects = ['e-vehicle', 'filter-vehicle', 'exp-vehicle'];
+  selects.forEach(sid => {
+    const el = document.getElementById(sid);
+    if (!el) return;
+    const hasAll = el.options[0]?.value === '';
+    const offset = hasAll ? 1 : 0;
+    while (el.options.length > offset) el.remove(offset);
+    vehicles.forEach(v => {
+      const opt = document.createElement('option');
+      opt.value = v.id; opt.textContent = v.number;
+      el.appendChild(opt);
+    });
+  });
+}
+
+// ============ DASHBOARD ============
+function renderDashboard() {
+  const today = new Date().toISOString().split('T')[0];
+  const todayEntries = entries.filter(e => e.date === today);
+
+  document.getElementById('stat-total').textContent = vehicles.length;
+  document.getElementById('stat-running').textContent = vehicles.filter(v => v.status === 'running').length;
+  document.getElementById('stat-loading').textContent = vehicles.filter(v => v.status === 'loading').length;
+  document.getElementById('stat-idle').textContent = vehicles.filter(v => v.status === 'idle').length;
+  document.getElementById('stat-diesel').textContent = todayEntries.reduce((s,e) => s+e.diesel, 0).toFixed(1);
+  document.getElementById('stat-cash').textContent = '₹' + todayEntries.reduce((s,e) => s+e.cash+e.phonepe+e.extra, 0).toLocaleString('en-IN');
+
+  const grid = document.getElementById('dashboard-vehicles');
+  if (!vehicles.length) {
+    grid.innerHTML = `<div class="empty" style="grid-column:1/-1">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1" y="10" width="22" height="8" rx="2"/><path d="M5 10V7a2 2 0 012-2h10a2 2 0 012 2v3"/><circle cx="7" cy="18" r="2"/><circle cx="17" cy="18" r="2"/></svg>
+      <p style="font-size:14px;margin-top:8px">No vehicles added yet</p>
+      <button class="btn btn-primary" onclick="showPage('vehicles')" style="margin-top:12px">Add Vehicle</button>
+    </div>`;
+    return;
+  }
+
+  grid.innerHTML = vehicles.map(v => {
+    const vEntries = entries.filter(e => e.vehicleId === v.id).sort((a,b) => b.date.localeCompare(a.date));
+    const last = vEntries[0];
+    const totalDiesel = vEntries.filter(e=>e.date===today).reduce((s,e)=>s+e.diesel,0);
+    const totalCash = vEntries.filter(e=>e.date===today).reduce((s,e)=>s+e.cash+e.phonepe+e.extra,0);
+    const badgeCls = { running:'badge-running', loading:'badge-loading', idle:'badge-idle' }[v.status];
+    const statusLabel = v.status.charAt(0).toUpperCase()+v.status.slice(1);
+    return `
+    <div class="vehicle-card ${v.status}">
+      <div class="vc-header">
+        <div class="vc-num">🚛 ${v.number}</div>
+        <div class="status-badge ${badgeCls}">${statusLabel}</div>
+      </div>
+      <div class="vc-dest">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>
+        ${v.dest || 'No destination set'}
+      </div>
+      <div class="vc-stats">
+        <div class="vc-stat">
+          <div class="vc-stat-label">Today Diesel</div>
+          <div class="vc-stat-val" style="color:var(--cyan)">${totalDiesel.toFixed(1)}L</div>
+        </div>
+        <div class="vc-stat">
+          <div class="vc-stat-label">Today Cash</div>
+          <div class="vc-stat-val" style="color:var(--accent2)">₹${totalCash.toLocaleString('en-IN')}</div>
+        </div>
+      </div>
+      <div class="vc-actions">
+        <button class="vc-btn" onclick="openEntryModal()">+ Entry</button>
+        <button class="vc-btn" onclick="changeStatus(${v.id})">Change Status</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// ============ CHANGE STATUS QUICK ============
+function changeStatus(vid) {
+  const v = vehicles.find(x => x.id === vid);
+  if (!v) return;
+  const statuses = ['running','loading','idle'];
+  const next = statuses[(statuses.indexOf(v.status)+1) % 3];
+  v.status = next;
+  save();
+  renderDashboard();
+  renderVehiclesTable();
+  showAlert(`${v.number} → ${next}`);
+}
+
+// ============ VEHICLES TABLE ============
+function renderVehiclesTable() {
+  const tbody = document.getElementById('vehicles-tbody');
+  if (!vehicles.length) {
+    tbody.innerHTML = `<tr><td colspan="6"><div class="empty">No vehicles. Add one above.</div></td></tr>`;
+    return;
+  }
+  tbody.innerHTML = vehicles.map((v,i) => {
+    const badgeCls = { running:'badge-running', loading:'badge-loading', idle:'badge-idle' }[v.status];
+    return `
+    <tr>
+      <td style="color:var(--muted)">${i+1}</td>
+      <td style="font-weight:600;font-family:var(--font-head)">${v.number}</td>
+      <td style="color:var(--muted)">${v.type}</td>
+      <td><span class="status-badge ${badgeCls}">${v.status}</span></td>
+      <td>${v.dest || '—'}</td>
+      <td>
+        <div style="display:flex;gap:6px">
+          <button class="btn btn-ghost" style="padding:5px 10px;font-size:12px" onclick="changeStatus(${v.id})">Status</button>
+          <button class="btn btn-danger" style="padding:5px 10px;font-size:12px" onclick="deleteVehicle(${v.id})">Delete</button>
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function deleteVehicle(id) {
+  if (!confirm('Delete this vehicle and all its entries?')) return;
+  vehicles = vehicles.filter(v => v.id !== id);
+  entries = entries.filter(e => e.vehicleId !== id);
+  save();
+  renderVehiclesTable();
+  renderDashboard();
+  populateVehicleSelects();
+  showAlert('Vehicle deleted!', 'error');
+}
+
+// ============ ENTRIES TABLE ============
+function renderEntries() {
+  const dateFilter = document.getElementById('filter-date').value;
+  const vehicleFilter = document.getElementById('filter-vehicle').value;
+
+  let filtered = entries;
+  if (dateFilter) filtered = filtered.filter(e => e.date === dateFilter);
+  if (vehicleFilter) filtered = filtered.filter(e => e.vehicleId == vehicleFilter);
+  filtered = filtered.sort((a,b) => b.date.localeCompare(a.date) || b.id - a.id);
+
+  const tbody = document.getElementById('entries-tbody');
+  const tfoot = document.getElementById('entries-tfoot');
+
+  if (!filtered.length) {
+    tbody.innerHTML = `<tr><td colspan="9"><div class="empty">No entries found.</div></td></tr>`;
+    tfoot.innerHTML = '';
+    return;
+  }
+
+  tbody.innerHTML = filtered.map(e => {
+    const total = e.cash + e.phonepe + e.extra;
+    const badgeCls = { running:'badge-running', loading:'badge-loading', idle:'badge-idle' }[e.status] || 'badge-idle';
+    return `
+    <tr>
+      <td>${e.date}</td>
+      <td style="font-weight:600">${e.vehicleNum}</td>
+      <td>${e.dest||'—'}</td>
+      <td style="color:var(--cyan)">${e.diesel||0}L</td>
+      <td>₹${(e.cash||0).toLocaleString('en-IN')}</td>
+      <td>₹${(e.phonepe||0).toLocaleString('en-IN')}</td>
+      <td>₹${(e.extra||0).toLocaleString('en-IN')}</td>
+      <td style="color:var(--muted);font-size:12px">${e.remarks||'—'}</td>
+      <td>
+        <div style="display:flex;gap:6px">
+          <button class="btn btn-ghost" style="padding:5px 10px;font-size:12px" onclick="openEntryModal(${e.id})">Edit</button>
+          <button class="btn btn-danger" style="padding:5px 10px;font-size:12px" onclick="deleteEntry(${e.id})">Del</button>
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+
+  const totDiesel = filtered.reduce((s,e) => s+e.diesel,0);
+  const totCash = filtered.reduce((s,e) => s+e.cash,0);
+  const totPhonePe = filtered.reduce((s,e) => s+e.phonepe,0);
+  const totExtra = filtered.reduce((s,e) => s+e.extra,0);
+  tfoot.innerHTML = `
+    <tr class="totals-row">
+      <td colspan="3">TOTAL (${filtered.length} entries)</td>
+      <td>${totDiesel.toFixed(1)}L</td>
+      <td>₹${totCash.toLocaleString('en-IN')}</td>
+      <td>₹${totPhonePe.toLocaleString('en-IN')}</td>
+      <td>₹${totExtra.toLocaleString('en-IN')}</td>
+      <td>₹${(totCash+totPhonePe+totExtra).toLocaleString('en-IN')}</td>
+      <td></td>
+    </tr>`;
+}
+
+function clearFilters() {
+  document.getElementById('filter-date').value = '';
+  document.getElementById('filter-vehicle').value = '';
+  renderEntries();
+}
+
+// ============ REPORTS ============
+function populateYears() {
+  const now = new Date();
+  const yearEl = document.getElementById('report-year');
+  const expYearEl = document.getElementById('exp-year');
+  for (let y = now.getFullYear(); y >= 2020; y--) {
+    if (yearEl) { const o = document.createElement('option'); o.value = y; o.textContent = y; yearEl.appendChild(o); }
+    if (expYearEl) { const o = document.createElement('option'); o.value = y; o.textContent = y; expYearEl.appendChild(o); }
+  }
+  // Populate months for report page
+  const months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  const mEl = document.getElementById('report-month');
+  if (mEl) {
+    months.forEach((m,i) => { const o = document.createElement('option'); o.value = i; o.textContent = m; mEl.appendChild(o); });
+    mEl.value = now.getMonth();
+  }
+  const expM = document.getElementById('exp-month');
+  if (expM) expM.value = now.getMonth();
+}
+
+function renderReports() {
+  const month = parseInt(document.getElementById('report-month').value);
+  const year = parseInt(document.getElementById('report-year').value);
+  const months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+
+  const filtered = entries.filter(e => {
+    const d = new Date(e.date);
+    return d.getMonth() === month && d.getFullYear() === year;
+  }).sort((a,b) => a.date.localeCompare(b.date));
+
+  const tbody = document.getElementById('report-tbody');
+  const tfoot = document.getElementById('report-tfoot');
+
+  if (!filtered.length) {
+    tbody.innerHTML = `<tr><td colspan="9"><div class="empty">No data for ${months[month]} ${year}</div></td></tr>`;
+    tfoot.innerHTML = '';
+    return;
+  }
+
+  tbody.innerHTML = filtered.map(e => {
+    const total = e.cash + e.phonepe + e.extra;
+    return `
+    <tr>
+      <td>${e.date}</td>
+      <td style="font-weight:600">${e.vehicleNum}</td>
+      <td>${e.dest||'—'}</td>
+      <td>${e.diesel||0}L</td>
+      <td>₹${(e.cash||0).toLocaleString('en-IN')}</td>
+      <td>₹${(e.phonepe||0).toLocaleString('en-IN')}</td>
+      <td>₹${(e.extra||0).toLocaleString('en-IN')}</td>
+      <td style="font-weight:600;color:var(--accent)">₹${total.toLocaleString('en-IN')}</td>
+      <td style="color:var(--muted);font-size:12px">${e.remarks||'—'}</td>
+    </tr>`;
+  }).join('');
+
+  const totD = filtered.reduce((s,e)=>s+e.diesel,0);
+  const totC = filtered.reduce((s,e)=>s+e.cash,0);
+  const totP = filtered.reduce((s,e)=>s+e.phonepe,0);
+  const totE = filtered.reduce((s,e)=>s+e.extra,0);
+  tfoot.innerHTML = `
+    <tr class="totals-row">
+      <td colspan="3">TOTAL — ${months[month]} ${year}</td>
+      <td>${totD.toFixed(1)}L</td>
+      <td>₹${totC.toLocaleString('en-IN')}</td>
+      <td>₹${totP.toLocaleString('en-IN')}</td>
+      <td>₹${totE.toLocaleString('en-IN')}</td>
+      <td>₹${(totC+totP+totE).toLocaleString('en-IN')}</td>
+      <td></td>
+    </tr>`;
+}
+
+document.getElementById('report-month')?.addEventListener('change', renderReports);
+document.getElementById('report-year')?.addEventListener('change', renderReports);
+
+// ============ EXPORT EXCEL ============
+function openExportModal() {
+  const now = new Date();
+  document.getElementById('exp-month').value = now.getMonth();
+  openModal('export-modal');
+}
+
+function exportExcel() {
+  const month = parseInt(document.getElementById('exp-month')?.value ?? document.getElementById('report-month').value);
+  const year = parseInt(document.getElementById('exp-year')?.value ?? document.getElementById('report-year').value);
+  const vehicleFilter = document.getElementById('exp-vehicle')?.value || '';
+  const months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+
+  let filtered = entries.filter(e => {
+    const d = new Date(e.date);
+    return d.getMonth() === month && d.getFullYear() === year;
+  });
+  if (vehicleFilter) filtered = filtered.filter(e => e.vehicleId == vehicleFilter);
+  filtered.sort((a,b) => a.date.localeCompare(b.date));
+
+  if (!filtered.length) { showAlert('No data for selected period!', 'error'); return; }
+
+  // Build workbook
+  const wb = XLSX.utils.book_new();
+
+  // Summary sheet grouped by vehicle
+  const allVehicleNums = [...new Set(filtered.map(e=>e.vehicleNum))];
+  allVehicleNums.forEach(vnum => {
+    const vRows = filtered.filter(e => e.vehicleNum === vnum);
+    const sheetData = [
+      [`Fleet Management Report — ${vnum} — ${months[month]} ${year}`],
+      [],
+      ['Date', 'Destination', 'Status', 'Diesel (L)', 'Cash (₹)', 'PhonePe (₹)', 'Extra (₹)', 'Total ₹', 'Remarks']
+    ];
+    vRows.forEach(e => {
+      sheetData.push([
+        e.date, e.dest||'', e.status||'',
+        e.diesel||0, e.cash||0, e.phonepe||0, e.extra||0,
+        (e.cash||0)+(e.phonepe||0)+(e.extra||0),
+        e.remarks||''
+      ]);
+    });
+    // Totals row
+    sheetData.push([
+      'TOTAL', '', '',
+      vRows.reduce((s,e)=>s+e.diesel,0).toFixed(1),
+      vRows.reduce((s,e)=>s+e.cash,0),
+      vRows.reduce((s,e)=>s+e.phonepe,0),
+      vRows.reduce((s,e)=>s+e.extra,0),
+      vRows.reduce((s,e)=>s+e.cash+e.phonepe+e.extra,0),
+      ''
+    ]);
+    const ws = XLSX.utils.aoa_to_sheet(sheetData);
+    ws['!cols'] = [{wch:12},{wch:20},{wch:12},{wch:12},{wch:12},{wch:14},{wch:12},{wch:12},{wch:30}];
+    XLSX.utils.book_append_sheet(wb, ws, vnum.substring(0,31));
+  });
+
+  // All entries sheet
+  const allData = [
+    [`Complete Fleet Report — ${months[month]} ${year}`],
+    [],
+    ['Date', 'Vehicle', 'Destination', 'Status', 'Diesel (L)', 'Cash (₹)', 'PhonePe (₹)', 'Extra (₹)', 'Total ₹', 'Remarks']
+  ];
+  filtered.forEach(e => {
+    allData.push([
+      e.date, e.vehicleNum, e.dest||'', e.status||'',
+      e.diesel||0, e.cash||0, e.phonepe||0, e.extra||0,
+      (e.cash||0)+(e.phonepe||0)+(e.extra||0),
+      e.remarks||''
+    ]);
+  });
+  allData.push([
+    'TOTAL', '', '', '',
+    filtered.reduce((s,e)=>s+e.diesel,0).toFixed(1),
+    filtered.reduce((s,e)=>s+e.cash,0),
+    filtered.reduce((s,e)=>s+e.phonepe,0),
+    filtered.reduce((s,e)=>s+e.extra,0),
+    filtered.reduce((s,e)=>s+e.cash+e.phonepe+e.extra,0),
+    ''
+  ]);
+  const wsAll = XLSX.utils.aoa_to_sheet(allData);
+  wsAll['!cols'] = [{wch:12},{wch:14},{wch:20},{wch:12},{wch:12},{wch:12},{wch:14},{wch:12},{wch:12},{wch:30}];
+  XLSX.utils.book_append_sheet(wb, wsAll, 'All Entries');
+
+  XLSX.writeFile(wb, `Fleet_Report_${months[month]}_${year}.xlsx`);
+  closeModal('export-modal');
+  showAlert('Excel exported successfully!');
+}
+
+// ============ INIT ============
+populateYears();
+populateVehicleSelects();
+renderDashboard();
+
+// Sample data if empty
+if (!vehicles.length) {
+  vehicles = [
+    { id: 1001, number: 'GJ01AB1234', type: 'Truck', status: 'running', dest: 'Surat' },
+    { id: 1002, number: 'MH04CD5678', type: 'Trailer', status: 'loading', dest: 'Pune' },
+    { id: 1003, number: 'RJ14EF9012', type: 'Mini Truck', status: 'idle', dest: '' },
+  ];
+  const today = new Date().toISOString().split('T')[0];
+  entries = [
+    { id: 2001, date: today, vehicleId: 1001, vehicleNum: 'GJ01AB1234', dest: 'Surat', status: 'running', diesel: 80, cash: 2000, phonepe: 1500, extra: 200, remarks: 'Fuel at Bharuch' },
+    { id: 2002, date: today, vehicleId: 1002, vehicleNum: 'MH04CD5678', dest: 'Pune', status: 'loading', diesel: 60, cash: 3000, phonepe: 0, extra: 0, remarks: '' },
+  ];
+  save();
+  populateVehicleSelects();
+  renderDashboard();
+}
+</script>
+</body>
+</html>
