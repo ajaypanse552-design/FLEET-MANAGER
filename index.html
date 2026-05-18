@@ -5,257 +5,163 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Fleet Manager — Logistics Dashboard</title>
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+
+<!-- XLSX for Excel export -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 
-<!-- Firebase SDK -->
-<script type="module">
-  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-  import { getDatabase, ref, set, push, update, remove, onValue, off } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
-
-  // ── Firebase Config ──────────────────────────────────────────────────────────
-  const firebaseConfig = {
-    apiKey: "AIzaSyDylD-YShg4LpxjJ9V8jFJvmbO2WlgD_yA",
-    authDomain: "fleet-2e87d.firebaseapp.com",
-    databaseURL: "https://fleet-2e87d-default-rtdb.asia-southeast1.firebasedatabase.app",
-    projectId: "fleet-2e87d",
-    storageBucket: "fleet-2e87d.firebasestorage.app",
-    messagingSenderId: "722646247267",
-    appId: "1:722646247267:web:48cf4216c688ef37609556"
-  };
-  const app = initializeApp(firebaseConfig);
-  const db  = getDatabase(app);
-
-  // ── Expose to global scope so non-module functions can call these ──────────
-  window._db     = db;
-  window._ref    = ref;
-  window._set    = set;
-  window._push   = push;
-  window._update = update;
-  window._remove = remove;
-  window._onValue= onValue;
-  window._off    = off;
-
-  // ── Real-time listeners ───────────────────────────────────────────────────
-  onValue(ref(db, 'vehicles'), snap => {
-    const data = snap.val();
-    window.vehicles = data ? Object.entries(data).map(([k,v]) => ({...v, _key: k})) : [];
-    refreshAll();
-  });
-
-  onValue(ref(db, 'entries'), snap => {
-    const data = snap.val();
-    window.entries = data ? Object.entries(data).map(([k,v]) => ({...v, _key: k})) : [];
-    refreshAll();
-  });
-</script>
+<!-- Firebase Compat SDK (global firebase object, no module race condition) -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 
 <style>
   :root {
-    --bg: #0d0f14;
-    --surface: #151820;
-    --surface2: #1c202c;
-    --border: rgba(255,255,255,0.07);
-    --border2: rgba(255,255,255,0.13);
-    --text: #f0f2f8;
-    --muted: #7a809a;
-    --accent: #4f8ef7;
-    --accent2: #7c3aed;
-    --green: #22c55e;
-    --amber: #f59e0b;
-    --red: #ef4444;
-    --cyan: #06b6d4;
-    --font-head: 'Syne', sans-serif;
-    --font-body: 'DM Sans', sans-serif;
+    --bg:#0d0f14;--surface:#151820;--surface2:#1c202c;
+    --border:rgba(255,255,255,0.07);--border2:rgba(255,255,255,0.13);
+    --text:#f0f2f8;--muted:#7a809a;--accent:#4f8ef7;--accent2:#7c3aed;
+    --green:#22c55e;--amber:#f59e0b;--red:#ef4444;--cyan:#06b6d4;
+    --font-head:'Syne',sans-serif;--font-body:'DM Sans',sans-serif;
   }
-
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-
-  body {
-    background: var(--bg);
-    color: var(--text);
-    font-family: var(--font-body);
-    min-height: 100vh;
-    font-size: 14px;
-  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--text);font-family:var(--font-body);min-height:100vh;font-size:14px}
 
   /* SIDEBAR */
-  .sidebar {
-    position: fixed; left: 0; top: 0; bottom: 0;
-    width: 220px;
-    background: var(--surface);
-    border-right: 1px solid var(--border);
-    display: flex; flex-direction: column;
-    z-index: 100;
-  }
-  .logo { padding: 24px 20px 20px; border-bottom: 1px solid var(--border); }
-  .logo h1 { font-family: var(--font-head); font-size: 18px; font-weight: 700; color: var(--text); letter-spacing: -0.3px; }
-  .logo span { color: var(--accent); }
-  .logo p { font-size: 11px; color: var(--muted); margin-top: 2px; letter-spacing: 0.5px; text-transform: uppercase; }
-
-  nav { flex: 1; padding: 16px 10px; }
-  .nav-item {
-    display: flex; align-items: center; gap: 10px;
-    padding: 10px 12px; border-radius: 8px;
-    cursor: pointer; font-size: 13px; font-weight: 500;
-    color: var(--muted); transition: all 0.15s;
-    margin-bottom: 2px;
-  }
-  .nav-item:hover { background: var(--surface2); color: var(--text); }
-  .nav-item.active { background: rgba(79,142,247,0.12); color: var(--accent); }
-  .nav-item svg { width: 16px; height: 16px; flex-shrink: 0; }
-
-  .sidebar-footer { padding: 16px; border-top: 1px solid var(--border); }
-  .today-badge {
-    background: rgba(34,197,94,0.1); border: 1px solid rgba(34,197,94,0.2);
-    border-radius: 6px; padding: 8px 12px;
-    font-size: 12px; color: var(--green); font-weight: 500;
-  }
-
-  /* FIREBASE STATUS */
-  .fb-status {
-    display: flex; align-items: center; gap: 6px;
-    font-size: 11px; color: var(--muted); margin-top: 8px;
-  }
-  .fb-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--amber); }
-  .fb-dot.connected { background: var(--green); }
+  .sidebar{position:fixed;left:0;top:0;bottom:0;width:220px;background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;z-index:100}
+  .logo{padding:24px 20px 20px;border-bottom:1px solid var(--border)}
+  .logo h1{font-family:var(--font-head);font-size:18px;font-weight:700;letter-spacing:-0.3px}
+  .logo span{color:var(--accent)}
+  .logo p{font-size:11px;color:var(--muted);margin-top:2px;letter-spacing:.5px;text-transform:uppercase}
+  nav{flex:1;padding:16px 10px}
+  .nav-item{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:8px;cursor:pointer;font-size:13px;font-weight:500;color:var(--muted);transition:all .15s;margin-bottom:2px}
+  .nav-item:hover{background:var(--surface2);color:var(--text)}
+  .nav-item.active{background:rgba(79,142,247,.12);color:var(--accent)}
+  .nav-item svg{width:16px;height:16px;flex-shrink:0}
+  .sidebar-footer{padding:16px;border-top:1px solid var(--border)}
+  .today-badge{background:rgba(34,197,94,.1);border:1px solid rgba(34,197,94,.2);border-radius:6px;padding:8px 12px;font-size:12px;color:var(--green);font-weight:500}
+  .fb-status{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--muted);margin-top:8px}
+  .fb-dot{width:6px;height:6px;border-radius:50%;background:var(--amber);transition:background .3s}
+  .fb-dot.ok{background:var(--green)}
+  .fb-dot.err{background:var(--red)}
 
   /* MAIN */
-  .main { margin-left: 220px; padding: 28px; min-height: 100vh; }
-  .page { display: none; }
-  .page.active { display: block; }
+  .main{margin-left:220px;padding:28px;min-height:100vh}
+  .page{display:none}.page.active{display:block}
 
   /* TOPBAR */
-  .topbar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 28px; }
-  .topbar h2 { font-family: var(--font-head); font-size: 22px; font-weight: 700; }
-  .topbar-actions { display: flex; gap: 10px; align-items: center; }
+  .topbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:28px}
+  .topbar h2{font-family:var(--font-head);font-size:22px;font-weight:700}
+  .topbar-actions{display:flex;gap:10px;align-items:center}
 
   /* BUTTONS */
-  .btn {
-    display: inline-flex; align-items: center; gap: 7px;
-    padding: 9px 16px; border-radius: 8px; border: none;
-    font-family: var(--font-body); font-size: 13px; font-weight: 500;
-    cursor: pointer; transition: all 0.15s;
-  }
-  .btn svg { width: 15px; height: 15px; }
-  .btn-primary { background: var(--accent); color: #fff; }
-  .btn-primary:hover { background: #3a7de8; }
-  .btn-success { background: var(--green); color: #fff; }
-  .btn-success:hover { background: #16a34a; }
-  .btn-ghost { background: var(--surface2); color: var(--text); border: 1px solid var(--border2); }
-  .btn-ghost:hover { background: #252a38; }
-  .btn-danger { background: rgba(239,68,68,0.15); color: var(--red); border: 1px solid rgba(239,68,68,0.25); }
-  .btn-danger:hover { background: rgba(239,68,68,0.25); }
-  .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .btn{display:inline-flex;align-items:center;gap:7px;padding:9px 16px;border-radius:8px;border:none;font-family:var(--font-body);font-size:13px;font-weight:500;cursor:pointer;transition:all .15s}
+  .btn svg{width:15px;height:15px}
+  .btn-primary{background:var(--accent);color:#fff}.btn-primary:hover{background:#3a7de8}
+  .btn-success{background:var(--green);color:#fff}.btn-success:hover{background:#16a34a}
+  .btn-ghost{background:var(--surface2);color:var(--text);border:1px solid var(--border2)}.btn-ghost:hover{background:#252a38}
+  .btn-danger{background:rgba(239,68,68,.15);color:var(--red);border:1px solid rgba(239,68,68,.25)}.btn-danger:hover{background:rgba(239,68,68,.25)}
+  .btn:disabled{opacity:.5;cursor:not-allowed}
 
-  /* STAT CARDS */
-  .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 16px; margin-bottom: 28px; }
-  .stat-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 18px; }
-  .stat-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 8px; }
-  .stat-value { font-family: var(--font-head); font-size: 26px; font-weight: 700; }
-  .stat-sub { font-size: 11px; color: var(--muted); margin-top: 4px; }
-  .stat-running .stat-value { color: var(--green); }
-  .stat-loading .stat-value { color: var(--amber); }
-  .stat-idle .stat-value { color: var(--muted); }
-  .stat-total .stat-value { color: var(--accent); }
+  /* STATS */
+  .stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:16px;margin-bottom:28px}
+  .stat-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:18px}
+  .stat-label{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.6px;margin-bottom:8px}
+  .stat-value{font-family:var(--font-head);font-size:26px;font-weight:700}
+  .stat-sub{font-size:11px;color:var(--muted);margin-top:4px}
+  .stat-running .stat-value{color:var(--green)}
+  .stat-loading .stat-value{color:var(--amber)}
+  .stat-idle .stat-value{color:var(--muted)}
+  .stat-total .stat-value{color:var(--accent)}
 
-  /* VEHICLE CARDS GRID */
-  .vehicles-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: 16px; }
-  .vehicle-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 18px; transition: border-color 0.2s; cursor: pointer; }
-  .vehicle-card:hover { border-color: var(--border2); }
-  .vehicle-card.running { border-left: 3px solid var(--green); }
-  .vehicle-card.loading { border-left: 3px solid var(--amber); }
-  .vehicle-card.idle { border-left: 3px solid var(--muted); }
-
-  .vc-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
-  .vc-num { font-family: var(--font-head); font-size: 15px; font-weight: 700; letter-spacing: 0.3px; }
-  .status-badge { font-size: 10px; font-weight: 600; padding: 3px 10px; border-radius: 20px; text-transform: uppercase; letter-spacing: 0.5px; }
-  .badge-running { background: rgba(34,197,94,0.12); color: var(--green); }
-  .badge-loading { background: rgba(245,158,11,0.12); color: var(--amber); }
-  .badge-idle { background: rgba(122,128,154,0.12); color: var(--muted); }
-
-  .vc-dest { font-size: 12px; color: var(--muted); margin-bottom: 12px; display: flex; align-items: center; gap: 5px; }
-  .vc-dest svg { width: 12px; height: 12px; }
-  .vc-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px; }
-  .vc-stat { background: var(--surface2); border-radius: 6px; padding: 8px 10px; }
-  .vc-stat-label { font-size: 10px; color: var(--muted); margin-bottom: 2px; }
-  .vc-stat-val { font-size: 13px; font-weight: 600; }
-  .vc-actions { display: flex; gap: 8px; }
-  .vc-btn { flex: 1; padding: 7px; border-radius: 6px; border: 1px solid var(--border2); background: var(--surface2); color: var(--text); font-size: 12px; cursor: pointer; font-family: var(--font-body); font-weight: 500; transition: all 0.15s; }
-  .vc-btn:hover { background: #252a38; }
+  /* VEHICLE CARDS */
+  .vehicles-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:16px}
+  .vehicle-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:18px;transition:border-color .2s;cursor:pointer}
+  .vehicle-card:hover{border-color:var(--border2)}
+  .vehicle-card.running{border-left:3px solid var(--green)}
+  .vehicle-card.loading{border-left:3px solid var(--amber)}
+  .vehicle-card.idle{border-left:3px solid var(--muted)}
+  .vc-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+  .vc-num{font-family:var(--font-head);font-size:15px;font-weight:700;letter-spacing:.3px}
+  .status-badge{font-size:10px;font-weight:600;padding:3px 10px;border-radius:20px;text-transform:uppercase;letter-spacing:.5px}
+  .badge-running{background:rgba(34,197,94,.12);color:var(--green)}
+  .badge-loading{background:rgba(245,158,11,.12);color:var(--amber)}
+  .badge-idle{background:rgba(122,128,154,.12);color:var(--muted)}
+  .vc-dest{font-size:12px;color:var(--muted);margin-bottom:12px;display:flex;align-items:center;gap:5px}
+  .vc-dest svg{width:12px;height:12px}
+  .vc-stats{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px}
+  .vc-stat{background:var(--surface2);border-radius:6px;padding:8px 10px}
+  .vc-stat-label{font-size:10px;color:var(--muted);margin-bottom:2px}
+  .vc-stat-val{font-size:13px;font-weight:600}
+  .vc-actions{display:flex;gap:8px}
+  .vc-btn{flex:1;padding:7px;border-radius:6px;border:1px solid var(--border2);background:var(--surface2);color:var(--text);font-size:12px;cursor:pointer;font-family:var(--font-body);font-weight:500;transition:all .15s}
+  .vc-btn:hover{background:#252a38}
 
   /* TABLE */
-  .table-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
-  .table-header { padding: 16px 20px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
-  .table-header h3 { font-family: var(--font-head); font-size: 15px; font-weight: 600; }
-  table { width: 100%; border-collapse: collapse; }
-  th { text-align: left; padding: 12px 16px; font-size: 11px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid var(--border); background: var(--surface2); }
-  td { padding: 12px 16px; border-bottom: 1px solid var(--border); font-size: 13px; vertical-align: middle; }
-  tr:last-child td { border-bottom: none; }
-  tr:hover td { background: rgba(255,255,255,0.02); }
+  .table-wrap{background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden}
+  .table-header{padding:16px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
+  .table-header h3{font-family:var(--font-head);font-size:15px;font-weight:600}
+  table{width:100%;border-collapse:collapse}
+  th{text-align:left;padding:12px 16px;font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.5px;border-bottom:1px solid var(--border);background:var(--surface2)}
+  td{padding:12px 16px;border-bottom:1px solid var(--border);font-size:13px;vertical-align:middle}
+  tr:last-child td{border-bottom:none}
+  tr:hover td{background:rgba(255,255,255,.02)}
 
   /* MODAL */
-  .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.75); display: flex; align-items: center; justify-content: center; z-index: 1000; opacity: 0; pointer-events: none; transition: opacity 0.2s; }
-  .modal-overlay.open { opacity: 1; pointer-events: all; }
-  .modal { background: var(--surface); border: 1px solid var(--border2); border-radius: 16px; padding: 28px; width: 540px; max-width: 95vw; max-height: 90vh; overflow-y: auto; transform: translateY(20px); transition: transform 0.2s; }
-  .modal-overlay.open .modal { transform: translateY(0); }
-  .modal-title { font-family: var(--font-head); font-size: 18px; font-weight: 700; margin-bottom: 20px; }
-  .modal-close { position: absolute; top: 20px; right: 20px; background: none; border: none; color: var(--muted); cursor: pointer; font-size: 20px; }
+  .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.75);display:flex;align-items:center;justify-content:center;z-index:1000;opacity:0;pointer-events:none;transition:opacity .2s}
+  .modal-overlay.open{opacity:1;pointer-events:all}
+  .modal{background:var(--surface);border:1px solid var(--border2);border-radius:16px;padding:28px;width:540px;max-width:95vw;max-height:90vh;overflow-y:auto;transform:translateY(20px);transition:transform .2s}
+  .modal-overlay.open .modal{transform:translateY(0)}
+  .modal-title{font-family:var(--font-head);font-size:18px;font-weight:700;margin-bottom:20px}
+  .modal-close{position:absolute;top:20px;right:20px;background:none;border:none;color:var(--muted);cursor:pointer;font-size:20px}
 
   /* FORM */
-  .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
-  .form-group { display: flex; flex-direction: column; gap: 6px; }
-  .form-group.full { grid-column: 1 / -1; }
-  label { font-size: 12px; color: var(--muted); font-weight: 500; text-transform: uppercase; letter-spacing: 0.4px; }
-  input, select, textarea { background: var(--surface2); border: 1px solid var(--border2); border-radius: 8px; padding: 10px 12px; color: var(--text); font-family: var(--font-body); font-size: 13px; outline: none; transition: border-color 0.15s; }
-  input:focus, select:focus, textarea:focus { border-color: var(--accent); }
-  textarea { resize: vertical; min-height: 60px; }
-  select option { background: var(--surface2); }
+  .form-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  .form-group{display:flex;flex-direction:column;gap:6px}
+  .form-group.full{grid-column:1/-1}
+  label{font-size:12px;color:var(--muted);font-weight:500;text-transform:uppercase;letter-spacing:.4px}
+  input,select,textarea{background:var(--surface2);border:1px solid var(--border2);border-radius:8px;padding:10px 12px;color:var(--text);font-family:var(--font-body);font-size:13px;outline:none;transition:border-color .15s}
+  input:focus,select:focus,textarea:focus{border-color:var(--accent)}
+  textarea{resize:vertical;min-height:60px}
+  select option{background:var(--surface2)}
 
-  .status-select-wrap { display: flex; gap: 8px; }
-  .status-opt { flex: 1; padding: 9px; border-radius: 8px; border: 1px solid var(--border2); background: var(--surface2); color: var(--muted); font-size: 12px; font-weight: 600; cursor: pointer; text-align: center; transition: all 0.15s; text-transform: uppercase; letter-spacing: 0.4px; }
-  .status-opt.sel-running { background: rgba(34,197,94,0.12); border-color: rgba(34,197,94,0.3); color: var(--green); }
-  .status-opt.sel-loading { background: rgba(245,158,11,0.12); border-color: rgba(245,158,11,0.3); color: var(--amber); }
-  .status-opt.sel-idle { background: rgba(122,128,154,0.12); border-color: rgba(122,128,154,0.3); color: var(--muted); }
+  .status-select-wrap{display:flex;gap:8px}
+  .status-opt{flex:1;padding:9px;border-radius:8px;border:1px solid var(--border2);background:var(--surface2);color:var(--muted);font-size:12px;font-weight:600;cursor:pointer;text-align:center;transition:all .15s;text-transform:uppercase;letter-spacing:.4px}
+  .status-opt.sel-running{background:rgba(34,197,94,.12);border-color:rgba(34,197,94,.3);color:var(--green)}
+  .status-opt.sel-loading{background:rgba(245,158,11,.12);border-color:rgba(245,158,11,.3);color:var(--amber)}
+  .status-opt.sel-idle{background:rgba(122,128,154,.12);border-color:rgba(122,128,154,.3);color:var(--muted)}
 
-  /* FILTER BAR */
-  .filter-bar { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
-  .filter-bar input { flex: 1; min-width: 180px; max-width: 300px; }
-  .filter-bar select { min-width: 140px; }
-
-  .month-export { display: flex; align-items: center; gap: 10px; }
-  .totals-row td { font-weight: 700; color: var(--accent); background: rgba(79,142,247,0.05) !important; border-top: 1px solid var(--border2); }
+  .filter-bar{display:flex;gap:10px;margin-bottom:20px;flex-wrap:wrap}
+  .filter-bar input{flex:1;min-width:180px;max-width:300px}
+  .filter-bar select{min-width:140px}
+  .month-export{display:flex;align-items:center;gap:10px}
+  .totals-row td{font-weight:700;color:var(--accent);background:rgba(79,142,247,.05)!important;border-top:1px solid var(--border2)}
 
   /* ALERT */
-  .alert { position: fixed; bottom: 24px; right: 24px; background: var(--green); color: #fff; padding: 12px 20px; border-radius: 10px; font-size: 13px; font-weight: 500; transform: translateY(80px); transition: transform 0.3s; z-index: 9999; }
-  .alert.show { transform: translateY(0); }
-  .alert.error { background: var(--red); }
+  .alert{position:fixed;bottom:24px;right:24px;background:var(--green);color:#fff;padding:12px 20px;border-radius:10px;font-size:13px;font-weight:500;transform:translateY(80px);transition:transform .3s;z-index:9999}
+  .alert.show{transform:translateY(0)}
+  .alert.error{background:var(--red)}
 
-  .empty { text-align: center; padding: 60px 20px; color: var(--muted); }
-  .empty svg { width: 48px; height: 48px; margin-bottom: 12px; opacity: 0.3; }
+  .empty{text-align:center;padding:60px 20px;color:var(--muted)}
+  .empty svg{width:48px;height:48px;margin-bottom:12px;opacity:.3}
 
-  /* LOADING SPINNER */
-  .spinner-wrap { display: flex; align-items: center; justify-content: center; padding: 60px; }
-  .spinner { width: 32px; height: 32px; border: 3px solid var(--border2); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.7s linear infinite; }
-  @keyframes spin { to { transform: rotate(360deg); } }
+  .spinner-wrap{display:flex;align-items:center;justify-content:center;padding:60px}
+  .spinner{width:32px;height:32px;border:3px solid var(--border2);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+  .live-dot{width:7px;height:7px;border-radius:50%;background:var(--green);display:inline-block;animation:pulse 2s infinite;margin-right:5px}
 
-  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
-  .live-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--green); display: inline-block; animation: pulse 2s infinite; margin-right: 5px; }
+  ::-webkit-scrollbar{width:5px;height:5px}
+  ::-webkit-scrollbar-track{background:transparent}
+  ::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px}
 
-  ::-webkit-scrollbar { width: 5px; height: 5px; }
-  ::-webkit-scrollbar-track { background: transparent; }
-  ::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 3px; }
-
-  @media(max-width: 768px) {
-    .sidebar { width: 60px; }
-    .sidebar .logo h1, .sidebar .logo p, nav .nav-label, .sidebar-footer { display: none; }
-    .main { margin-left: 60px; padding: 16px; }
-    .form-grid { grid-template-columns: 1fr; }
+  @media(max-width:768px){
+    .sidebar{width:60px}
+    .sidebar .logo h1,.sidebar .logo p,nav .nav-label,.sidebar-footer{display:none}
+    .main{margin-left:60px;padding:16px}
+    .form-grid{grid-template-columns:1fr}
   }
 </style>
 </head>
 <body>
 
-<!-- SIDEBAR -->
 <aside class="sidebar">
   <div class="logo">
     <h1>Fleet<span>Pro</span></h1>
@@ -291,10 +197,9 @@
   </div>
 </aside>
 
-<!-- MAIN CONTENT -->
 <main class="main">
 
-  <!-- DASHBOARD PAGE -->
+  <!-- DASHBOARD -->
   <div id="page-dashboard" class="page active">
     <div class="topbar">
       <h2>Dashboard</h2>
@@ -318,7 +223,7 @@
     </div>
   </div>
 
-  <!-- VEHICLES PAGE -->
+  <!-- VEHICLES -->
   <div id="page-vehicles" class="page">
     <div class="topbar">
       <h2>Vehicles</h2>
@@ -328,10 +233,7 @@
       </button>
     </div>
     <div class="table-wrap">
-      <div class="table-header">
-        <h3>Registered Fleet</h3>
-        <span style="font-size:12px;color:var(--muted)"><span class="live-dot"></span>Live — Firebase</span>
-      </div>
+      <div class="table-header"><h3>Registered Fleet</h3><span style="font-size:12px;color:var(--muted)"><span class="live-dot"></span>Live — Firebase</span></div>
       <table>
         <thead><tr><th>#</th><th>Vehicle Number</th><th>Type</th><th>Status</th><th>Last Destination</th><th>Actions</th></tr></thead>
         <tbody id="vehicles-tbody"><tr><td colspan="6"><div class="spinner-wrap"><div class="spinner"></div></div></td></tr></tbody>
@@ -339,19 +241,17 @@
     </div>
   </div>
 
-  <!-- ENTRIES PAGE -->
+  <!-- ENTRIES -->
   <div id="page-entries" class="page">
     <div class="topbar">
       <h2>Daily Entries</h2>
-      <div class="topbar-actions">
-        <button class="btn btn-primary" onclick="openEntryModal()">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-          New Entry
-        </button>
-      </div>
+      <button class="btn btn-primary" onclick="openEntryModal()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        New Entry
+      </button>
     </div>
     <div class="filter-bar">
-      <input type="date" id="filter-date" onchange="renderEntries()" placeholder="Filter by date">
+      <input type="date" id="filter-date" onchange="renderEntries()">
       <select id="filter-vehicle" onchange="renderEntries()"><option value="">All Vehicles</option></select>
       <button class="btn btn-ghost" onclick="clearFilters()">Clear</button>
     </div>
@@ -373,7 +273,7 @@
     </div>
   </div>
 
-  <!-- REPORTS PAGE -->
+  <!-- REPORTS -->
   <div id="page-reports" class="page">
     <div class="topbar"><h2>Monthly Reports</h2></div>
     <div class="month-export" style="margin-bottom:24px;">
@@ -399,34 +299,17 @@
 </main>
 
 <!-- MODALS -->
-
-<!-- Add Vehicle Modal -->
 <div class="modal-overlay" id="vehicle-modal">
   <div class="modal" style="position:relative">
     <button class="modal-close" onclick="closeModal('vehicle-modal')">×</button>
     <div class="modal-title">Add Vehicle</div>
     <div class="form-grid">
-      <div class="form-group full">
-        <label>Vehicle Number</label>
-        <input type="text" id="v-number" placeholder="e.g. GJ01AB1234" style="text-transform:uppercase">
+      <div class="form-group full"><label>Vehicle Number</label><input type="text" id="v-number" placeholder="e.g. GJ01AB1234" style="text-transform:uppercase"></div>
+      <div class="form-group"><label>Vehicle Type</label>
+        <select id="v-type"><option>Truck</option><option>Trailer</option><option>Mini Truck</option><option>Pickup</option><option>Other</option></select>
       </div>
-      <div class="form-group">
-        <label>Vehicle Type</label>
-        <select id="v-type">
-          <option value="Truck">Truck</option>
-          <option value="Trailer">Trailer</option>
-          <option value="Mini Truck">Mini Truck</option>
-          <option value="Pickup">Pickup</option>
-          <option value="Other">Other</option>
-        </select>
-      </div>
-      <div class="form-group">
-        <label>Initial Status</label>
-        <select id="v-status">
-          <option value="idle">Idle</option>
-          <option value="running">Running</option>
-          <option value="loading">Loading</option>
-        </select>
+      <div class="form-group"><label>Initial Status</label>
+        <select id="v-status"><option value="idle">Idle</option><option value="running">Running</option><option value="loading">Loading</option></select>
       </div>
     </div>
     <div style="margin-top:20px;display:flex;gap:10px;justify-content:flex-end;">
@@ -436,24 +319,14 @@
   </div>
 </div>
 
-<!-- Add Entry Modal -->
 <div class="modal-overlay" id="entry-modal">
   <div class="modal" style="position:relative">
     <button class="modal-close" onclick="closeModal('entry-modal')">×</button>
     <div class="modal-title" id="entry-modal-title">New Daily Entry</div>
     <div class="form-grid">
-      <div class="form-group">
-        <label>Date</label>
-        <input type="date" id="e-date">
-      </div>
-      <div class="form-group">
-        <label>Vehicle</label>
-        <select id="e-vehicle"></select>
-      </div>
-      <div class="form-group full">
-        <label>Destination</label>
-        <input type="text" id="e-dest" placeholder="City / Route">
-      </div>
+      <div class="form-group"><label>Date</label><input type="date" id="e-date"></div>
+      <div class="form-group"><label>Vehicle</label><select id="e-vehicle"></select></div>
+      <div class="form-group full"><label>Destination</label><input type="text" id="e-dest" placeholder="City / Route"></div>
       <div class="form-group full">
         <label>Status</label>
         <div class="status-select-wrap">
@@ -475,21 +348,17 @@
   </div>
 </div>
 
-<!-- Export Modal -->
 <div class="modal-overlay" id="export-modal">
   <div class="modal" style="position:relative">
     <button class="modal-close" onclick="closeModal('export-modal')">×</button>
     <div class="modal-title">Export to Excel</div>
     <div class="form-grid">
-      <div class="form-group">
-        <label>Month</label>
+      <div class="form-group"><label>Month</label>
         <select id="exp-month">
-          <option value="0">January</option><option value="1">February</option>
-          <option value="2">March</option><option value="3">April</option>
-          <option value="4">May</option><option value="5">June</option>
-          <option value="6">July</option><option value="7">August</option>
-          <option value="8">September</option><option value="9">October</option>
-          <option value="10">November</option><option value="11">December</option>
+          <option value="0">January</option><option value="1">February</option><option value="2">March</option>
+          <option value="3">April</option><option value="4">May</option><option value="5">June</option>
+          <option value="6">July</option><option value="7">August</option><option value="8">September</option>
+          <option value="9">October</option><option value="10">November</option><option value="11">December</option>
         </select>
       </div>
       <div class="form-group"><label>Year</label><select id="exp-year"></select></div>
@@ -508,23 +377,44 @@
 <div class="alert" id="alert"></div>
 
 <script>
-// ── Global state (populated by Firebase listeners) ───────────────────────────
-window.vehicles = [];
-window.entries  = [];
-let editEntryKey   = null;   // Firebase key of entry being edited
-let selectedStatus = 'running';
-let fbReady = false;
+// ── Firebase init ─────────────────────────────────────────────────────────────
+const firebaseConfig = {
+  apiKey: "AIzaSyDylD-YShg4LpxjJ9V8jFJvmbO2WlgD_yA",
+  authDomain: "fleet-2e87d.firebaseapp.com",
+  databaseURL: "https://fleet-2e87d-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "fleet-2e87d",
+  storageBucket: "fleet-2e87d.firebasestorage.app",
+  messagingSenderId: "722646247267",
+  appId: "1:722646247267:web:48cf4216c688ef37609556"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
 
-// ── Firebase connection status ────────────────────────────────────────────────
-// Poll until Firebase SDK is available
-const fbCheck = setInterval(() => {
-  if (window._db) {
-    clearInterval(fbCheck);
-    fbReady = true;
-    document.getElementById('fb-dot').classList.add('connected');
-    document.getElementById('fb-status-text').textContent = 'Firebase Live';
-  }
-}, 300);
+// Connection state indicator
+db.ref('.info/connected').on('value', snap => {
+  const ok = snap.val() === true;
+  document.getElementById('fb-dot').className = 'fb-dot ' + (ok ? 'ok' : 'err');
+  document.getElementById('fb-status-text').textContent = ok ? 'Firebase Live' : 'Reconnecting…';
+});
+
+// ── Global state ──────────────────────────────────────────────────────────────
+let vehicles = [];
+let entries  = [];
+let editEntryKey   = null;
+let selectedStatus = 'running';
+
+// ── Real-time listeners ───────────────────────────────────────────────────────
+db.ref('vehicles').on('value', snap => {
+  const data = snap.val();
+  vehicles = data ? Object.entries(data).map(([k,v]) => ({...v, _key: k})) : [];
+  refreshAll();
+}, err => showAlert('DB Error: ' + err.message, 'error'));
+
+db.ref('entries').on('value', snap => {
+  const data = snap.val();
+  entries = data ? Object.entries(data).map(([k,v]) => ({...v, _key: k})) : [];
+  refreshAll();
+}, err => showAlert('DB Error: ' + err.message, 'error'));
 
 // ── Navigation ────────────────────────────────────────────────────────────────
 function showPage(page) {
@@ -536,30 +426,6 @@ function showPage(page) {
   refreshAll();
 }
 
-// ── Live clock ────────────────────────────────────────────────────────────────
-function updateClock() {
-  document.getElementById('live-time').textContent =
-    new Date().toLocaleTimeString('en-IN', {hour:'2-digit', minute:'2-digit', second:'2-digit'});
-}
-setInterval(updateClock, 1000); updateClock();
-
-// ── Alert ─────────────────────────────────────────────────────────────────────
-function showAlert(msg, type='success') {
-  const el = document.getElementById('alert');
-  el.textContent = msg;
-  el.className = 'alert' + (type==='error' ? ' error' : '');
-  el.classList.add('show');
-  setTimeout(() => el.classList.remove('show'), 2800);
-}
-
-// ── Modal helpers ─────────────────────────────────────────────────────────────
-function openModal(id)  { document.getElementById(id).classList.add('open'); }
-function closeModal(id) { document.getElementById(id).classList.remove('open'); }
-document.querySelectorAll('.modal-overlay').forEach(m => {
-  m.addEventListener('click', e => { if (e.target === m) m.classList.remove('open'); });
-});
-
-// ── Re-render everything ──────────────────────────────────────────────────────
 function refreshAll() {
   populateVehicleSelects();
   renderDashboard();
@@ -568,7 +434,29 @@ function refreshAll() {
   renderReports();
 }
 
-// ── Populate vehicle dropdowns ────────────────────────────────────────────────
+// ── Clock ─────────────────────────────────────────────────────────────────────
+setInterval(() => {
+  document.getElementById('live-time').textContent =
+    new Date().toLocaleTimeString('en-IN', {hour:'2-digit', minute:'2-digit', second:'2-digit'});
+}, 1000);
+
+// ── Alert ─────────────────────────────────────────────────────────────────────
+function showAlert(msg, type='success') {
+  const el = document.getElementById('alert');
+  el.textContent = msg;
+  el.className = 'alert' + (type==='error' ? ' error' : '');
+  el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), 3000);
+}
+
+// ── Modals ────────────────────────────────────────────────────────────────────
+function openModal(id)  { document.getElementById(id).classList.add('open'); }
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+document.querySelectorAll('.modal-overlay').forEach(m => {
+  m.addEventListener('click', e => { if (e.target === m) m.classList.remove('open'); });
+});
+
+// ── Vehicle selects ───────────────────────────────────────────────────────────
 function populateVehicleSelects() {
   ['e-vehicle','filter-vehicle','exp-vehicle'].forEach(sid => {
     const el = document.getElementById(sid);
@@ -576,7 +464,7 @@ function populateVehicleSelects() {
     const hasAll = el.options[0]?.value === '';
     const offset = hasAll ? 1 : 0;
     while (el.options.length > offset) el.remove(offset);
-    window.vehicles.forEach(v => {
+    vehicles.forEach(v => {
       const o = document.createElement('option');
       o.value = v._key; o.textContent = v.number;
       el.appendChild(o);
@@ -584,20 +472,17 @@ function populateVehicleSelects() {
   });
 }
 
-// ── VEHICLE CRUD ──────────────────────────────────────────────────────────────
+// ── Add Vehicle ───────────────────────────────────────────────────────────────
 function openVehicleModal() { openModal('vehicle-modal'); }
 
 async function addVehicle() {
-  if (!fbReady) { showAlert('Firebase not connected!','error'); return; }
   const num = document.getElementById('v-number').value.trim().toUpperCase();
-  if (!num) { showAlert('Enter vehicle number!','error'); return; }
-  if (window.vehicles.find(v => v.number === num)) { showAlert('Vehicle already exists!','error'); return; }
-
+  if (!num) { showAlert('Enter vehicle number!', 'error'); return; }
+  if (vehicles.find(v => v.number === num)) { showAlert('Vehicle already exists!', 'error'); return; }
   const btn = document.getElementById('btn-add-vehicle');
   btn.disabled = true; btn.textContent = 'Saving…';
   try {
-    const newRef = window._push(window._ref(window._db, 'vehicles'));
-    await window._set(newRef, {
+    await db.ref('vehicles').push({
       number: num,
       type: document.getElementById('v-type').value,
       status: document.getElementById('v-status').value,
@@ -606,50 +491,46 @@ async function addVehicle() {
     closeModal('vehicle-modal');
     showAlert('Vehicle added!');
     document.getElementById('v-number').value = '';
-  } catch(err) {
-    showAlert('Error: ' + err.message,'error');
-  }
+  } catch(err) { showAlert('Error: ' + err.message, 'error'); }
   btn.disabled = false; btn.textContent = 'Add Vehicle';
 }
 
 async function deleteVehicle(key) {
   if (!confirm('Delete this vehicle and all its entries?')) return;
   try {
-    await window._remove(window._ref(window._db, 'vehicles/' + key));
-    // Delete all entries for this vehicle
-    const vehEntries = window.entries.filter(e => e.vehicleKey === key);
-    await Promise.all(vehEntries.map(e => window._remove(window._ref(window._db, 'entries/' + e._key))));
-    showAlert('Vehicle deleted!','error');
-  } catch(err) { showAlert('Error: '+err.message,'error'); }
+    await db.ref('vehicles/' + key).remove();
+    const toDelete = entries.filter(e => e.vehicleKey === key);
+    await Promise.all(toDelete.map(e => db.ref('entries/' + e._key).remove()));
+    showAlert('Vehicle deleted!', 'error');
+  } catch(err) { showAlert('Error: ' + err.message, 'error'); }
 }
 
 async function changeStatus(key) {
-  const v = window.vehicles.find(x => x._key === key);
+  const v = vehicles.find(x => x._key === key);
   if (!v) return;
-  const statuses = ['running','loading','idle'];
-  const next = statuses[(statuses.indexOf(v.status)+1) % 3];
+  const list = ['running','loading','idle'];
+  const next = list[(list.indexOf(v.status) + 1) % 3];
   try {
-    await window._update(window._ref(window._db, 'vehicles/' + key), { status: next });
-    showAlert(`${v.number} → ${next}`);
-  } catch(err) { showAlert('Error: '+err.message,'error'); }
+    await db.ref('vehicles/' + key).update({ status: next });
+    showAlert(v.number + ' → ' + next);
+  } catch(err) { showAlert('Error: ' + err.message, 'error'); }
 }
 
-// ── ENTRY CRUD ────────────────────────────────────────────────────────────────
+// ── Entry Modal ───────────────────────────────────────────────────────────────
 function openEntryModal(entryKey=null) {
   editEntryKey = entryKey;
   const today = new Date().toISOString().split('T')[0];
   document.getElementById('entry-modal-title').textContent = entryKey ? 'Edit Entry' : 'New Daily Entry';
-
   if (entryKey) {
-    const e = window.entries.find(x => x._key === entryKey);
-    document.getElementById('e-date').value     = e.date;
-    document.getElementById('e-vehicle').value  = e.vehicleKey;
-    document.getElementById('e-dest').value     = e.dest;
-    document.getElementById('e-diesel').value   = e.diesel || '';
-    document.getElementById('e-cash').value     = e.cash || '';
-    document.getElementById('e-phonepe').value  = e.phonepe || '';
-    document.getElementById('e-extra').value    = e.extra || '';
-    document.getElementById('e-remarks').value  = e.remarks || '';
+    const e = entries.find(x => x._key === entryKey);
+    document.getElementById('e-date').value    = e.date;
+    document.getElementById('e-vehicle').value = e.vehicleKey;
+    document.getElementById('e-dest').value    = e.dest;
+    document.getElementById('e-diesel').value  = e.diesel || '';
+    document.getElementById('e-cash').value    = e.cash || '';
+    document.getElementById('e-phonepe').value = e.phonepe || '';
+    document.getElementById('e-extra').value   = e.extra || '';
+    document.getElementById('e-remarks').value = e.remarks || '';
     selectedStatus = e.status || 'running';
   } else {
     document.getElementById('e-date').value    = today;
@@ -660,7 +541,7 @@ function openEntryModal(entryKey=null) {
     document.getElementById('e-extra').value   = '';
     document.getElementById('e-remarks').value = '';
     selectedStatus = 'running';
-    if (window.vehicles.length) document.getElementById('e-vehicle').value = window.vehicles[0]._key;
+    if (vehicles.length) document.getElementById('e-vehicle').value = vehicles[0]._key;
   }
   updateStatusUI();
   openModal('entry-modal');
@@ -674,72 +555,59 @@ function updateStatusUI() {
 }
 
 async function saveEntry() {
-  if (!fbReady) { showAlert('Firebase not connected!','error'); return; }
   const vehicleKey = document.getElementById('e-vehicle').value;
-  const vehicle = window.vehicles.find(v => v._key === vehicleKey);
-  if (!vehicle) { showAlert('Select a vehicle!','error'); return; }
+  const vehicle = vehicles.find(v => v._key === vehicleKey);
+  if (!vehicle) { showAlert('Select a vehicle!', 'error'); return; }
   const date = document.getElementById('e-date').value;
-  if (!date) { showAlert('Select a date!','error'); return; }
-
+  if (!date) { showAlert('Select a date!', 'error'); return; }
   const btn = document.getElementById('btn-save-entry');
   btn.disabled = true; btn.textContent = 'Saving…';
-
   const entryData = {
     date, vehicleKey,
     vehicleNum: vehicle.number,
-    dest: document.getElementById('e-dest').value.trim(),
-    status: selectedStatus,
+    dest:    document.getElementById('e-dest').value.trim(),
+    status:  selectedStatus,
     diesel:  parseFloat(document.getElementById('e-diesel').value)  || 0,
     cash:    parseFloat(document.getElementById('e-cash').value)    || 0,
     phonepe: parseFloat(document.getElementById('e-phonepe').value) || 0,
     extra:   parseFloat(document.getElementById('e-extra').value)   || 0,
     remarks: document.getElementById('e-remarks').value.trim()
   };
-
   try {
-    // Update vehicle status & dest
-    await window._update(window._ref(window._db, 'vehicles/' + vehicleKey), {
-      status: selectedStatus,
-      dest: entryData.dest
-    });
-
+    await db.ref('vehicles/' + vehicleKey).update({ status: selectedStatus, dest: entryData.dest });
     if (editEntryKey) {
-      await window._update(window._ref(window._db, 'entries/' + editEntryKey), entryData);
+      await db.ref('entries/' + editEntryKey).update(entryData);
     } else {
-      const newRef = window._push(window._ref(window._db, 'entries'));
-      await window._set(newRef, entryData);
+      await db.ref('entries').push(entryData);
     }
     closeModal('entry-modal');
     showAlert(editEntryKey ? 'Entry updated!' : 'Entry saved!');
     editEntryKey = null;
-  } catch(err) {
-    showAlert('Error: '+err.message,'error');
-  }
+  } catch(err) { showAlert('Error: ' + err.message, 'error'); }
   btn.disabled = false; btn.textContent = 'Save Entry';
 }
 
 async function deleteEntry(key) {
   if (!confirm('Delete this entry?')) return;
   try {
-    await window._remove(window._ref(window._db, 'entries/' + key));
-    showAlert('Entry deleted!','error');
-  } catch(err) { showAlert('Error: '+err.message,'error'); }
+    await db.ref('entries/' + key).remove();
+    showAlert('Entry deleted!', 'error');
+  } catch(err) { showAlert('Error: ' + err.message, 'error'); }
 }
 
-// ── DASHBOARD ─────────────────────────────────────────────────────────────────
+// ── Dashboard ─────────────────────────────────────────────────────────────────
 function renderDashboard() {
   const today = new Date().toISOString().split('T')[0];
-  const todayEntries = window.entries.filter(e => e.date === today);
-
-  document.getElementById('stat-total').textContent   = window.vehicles.length;
-  document.getElementById('stat-running').textContent = window.vehicles.filter(v=>v.status==='running').length;
-  document.getElementById('stat-loading').textContent = window.vehicles.filter(v=>v.status==='loading').length;
-  document.getElementById('stat-idle').textContent    = window.vehicles.filter(v=>v.status==='idle').length;
-  document.getElementById('stat-diesel').textContent  = todayEntries.reduce((s,e)=>s+e.diesel,0).toFixed(1);
-  document.getElementById('stat-cash').textContent    = '₹' + todayEntries.reduce((s,e)=>s+e.cash+e.phonepe+e.extra,0).toLocaleString('en-IN');
+  const todayE = entries.filter(e => e.date === today);
+  document.getElementById('stat-total').textContent   = vehicles.length;
+  document.getElementById('stat-running').textContent = vehicles.filter(v=>v.status==='running').length;
+  document.getElementById('stat-loading').textContent = vehicles.filter(v=>v.status==='loading').length;
+  document.getElementById('stat-idle').textContent    = vehicles.filter(v=>v.status==='idle').length;
+  document.getElementById('stat-diesel').textContent  = todayE.reduce((s,e)=>s+(e.diesel||0),0).toFixed(1);
+  document.getElementById('stat-cash').textContent    = '₹' + todayE.reduce((s,e)=>s+(e.cash||0)+(e.phonepe||0)+(e.extra||0),0).toLocaleString('en-IN');
 
   const grid = document.getElementById('dashboard-vehicles');
-  if (!window.vehicles.length) {
+  if (!vehicles.length) {
     grid.innerHTML = `<div class="empty" style="grid-column:1/-1">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1" y="10" width="22" height="8" rx="2"/><path d="M5 10V7a2 2 0 012-2h10a2 2 0 012 2v3"/><circle cx="7" cy="18" r="2"/><circle cx="17" cy="18" r="2"/></svg>
       <p style="font-size:14px;margin-top:8px">No vehicles added yet</p>
@@ -747,26 +615,23 @@ function renderDashboard() {
     </div>`;
     return;
   }
-
-  grid.innerHTML = window.vehicles.map(v => {
-    const vEntries = window.entries.filter(e => e.vehicleKey === v._key);
-    const totalDiesel = vEntries.filter(e=>e.date===today).reduce((s,e)=>s+e.diesel,0);
-    const totalCash   = vEntries.filter(e=>e.date===today).reduce((s,e)=>s+e.cash+e.phonepe+e.extra,0);
-    const badgeCls = {running:'badge-running',loading:'badge-loading',idle:'badge-idle'}[v.status];
-    const statusLabel = v.status.charAt(0).toUpperCase()+v.status.slice(1);
-    return `
-    <div class="vehicle-card ${v.status}">
+  grid.innerHTML = vehicles.map(v => {
+    const vE = entries.filter(e => e.vehicleKey === v._key && e.date === today);
+    const totD = vE.reduce((s,e)=>s+(e.diesel||0),0);
+    const totC = vE.reduce((s,e)=>s+(e.cash||0)+(e.phonepe||0)+(e.extra||0),0);
+    const bc = {running:'badge-running',loading:'badge-loading',idle:'badge-idle'}[v.status];
+    return `<div class="vehicle-card ${v.status}">
       <div class="vc-header">
         <div class="vc-num">🚛 ${v.number}</div>
-        <div class="status-badge ${badgeCls}">${statusLabel}</div>
+        <div class="status-badge ${bc}">${v.status}</div>
       </div>
       <div class="vc-dest">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>
         ${v.dest || 'No destination set'}
       </div>
       <div class="vc-stats">
-        <div class="vc-stat"><div class="vc-stat-label">Today Diesel</div><div class="vc-stat-val" style="color:var(--cyan)">${totalDiesel.toFixed(1)}L</div></div>
-        <div class="vc-stat"><div class="vc-stat-label">Today Cash</div><div class="vc-stat-val" style="color:var(--accent2)">₹${totalCash.toLocaleString('en-IN')}</div></div>
+        <div class="vc-stat"><div class="vc-stat-label">Today Diesel</div><div class="vc-stat-val" style="color:var(--cyan)">${totD.toFixed(1)}L</div></div>
+        <div class="vc-stat"><div class="vc-stat-label">Today Cash</div><div class="vc-stat-val" style="color:var(--accent2)">₹${totC.toLocaleString('en-IN')}</div></div>
       </div>
       <div class="vc-actions">
         <button class="vc-btn" onclick="openEntryModal()">+ Entry</button>
@@ -776,83 +641,71 @@ function renderDashboard() {
   }).join('');
 }
 
-// ── VEHICLES TABLE ────────────────────────────────────────────────────────────
+// ── Vehicles table ────────────────────────────────────────────────────────────
 function renderVehiclesTable() {
   const tbody = document.getElementById('vehicles-tbody');
-  if (!window.vehicles.length) {
+  if (!vehicles.length) {
     tbody.innerHTML = `<tr><td colspan="6"><div class="empty">No vehicles. Add one above.</div></td></tr>`;
     return;
   }
-  tbody.innerHTML = window.vehicles.map((v,i) => {
-    const badgeCls = {running:'badge-running',loading:'badge-loading',idle:'badge-idle'}[v.status];
-    return `
-    <tr>
+  tbody.innerHTML = vehicles.map((v,i) => {
+    const bc = {running:'badge-running',loading:'badge-loading',idle:'badge-idle'}[v.status];
+    return `<tr>
       <td style="color:var(--muted)">${i+1}</td>
       <td style="font-weight:600;font-family:var(--font-head)">${v.number}</td>
       <td style="color:var(--muted)">${v.type}</td>
-      <td><span class="status-badge ${badgeCls}">${v.status}</span></td>
+      <td><span class="status-badge ${bc}">${v.status}</span></td>
       <td>${v.dest||'—'}</td>
-      <td>
-        <div style="display:flex;gap:6px">
-          <button class="btn btn-ghost" style="padding:5px 10px;font-size:12px" onclick="changeStatus('${v._key}')">Status</button>
-          <button class="btn btn-danger" style="padding:5px 10px;font-size:12px" onclick="deleteVehicle('${v._key}')">Delete</button>
-        </div>
-      </td>
+      <td><div style="display:flex;gap:6px">
+        <button class="btn btn-ghost" style="padding:5px 10px;font-size:12px" onclick="changeStatus('${v._key}')">Status</button>
+        <button class="btn btn-danger" style="padding:5px 10px;font-size:12px" onclick="deleteVehicle('${v._key}')">Delete</button>
+      </div></td>
     </tr>`;
   }).join('');
 }
 
-// ── ENTRIES TABLE ─────────────────────────────────────────────────────────────
+// ── Entries table ─────────────────────────────────────────────────────────────
 function renderEntries() {
-  const dateFilter    = document.getElementById('filter-date').value;
-  const vehicleFilter = document.getElementById('filter-vehicle').value;
-
-  let filtered = window.entries;
-  if (dateFilter)    filtered = filtered.filter(e => e.date === dateFilter);
-  if (vehicleFilter) filtered = filtered.filter(e => e.vehicleKey === vehicleFilter);
-  filtered = filtered.sort((a,b) => b.date.localeCompare(a.date) || b._key.localeCompare(a._key));
+  const dateF = document.getElementById('filter-date').value;
+  const vehF  = document.getElementById('filter-vehicle').value;
+  let f = entries;
+  if (dateF) f = f.filter(e => e.date === dateF);
+  if (vehF)  f = f.filter(e => e.vehicleKey === vehF);
+  f = f.sort((a,b) => b.date.localeCompare(a.date) || b._key.localeCompare(a._key));
 
   const tbody = document.getElementById('entries-tbody');
   const tfoot = document.getElementById('entries-tfoot');
 
-  if (!filtered.length) {
+  if (!f.length) {
     tbody.innerHTML = `<tr><td colspan="9"><div class="empty">No entries found.</div></td></tr>`;
-    tfoot.innerHTML = '';
-    return;
+    tfoot.innerHTML = ''; return;
   }
+  tbody.innerHTML = f.map(e => `<tr>
+    <td>${e.date}</td>
+    <td style="font-weight:600">${e.vehicleNum}</td>
+    <td>${e.dest||'—'}</td>
+    <td style="color:var(--cyan)">${e.diesel||0}L</td>
+    <td>₹${(e.cash||0).toLocaleString('en-IN')}</td>
+    <td>₹${(e.phonepe||0).toLocaleString('en-IN')}</td>
+    <td>₹${(e.extra||0).toLocaleString('en-IN')}</td>
+    <td style="color:var(--muted);font-size:12px">${e.remarks||'—'}</td>
+    <td><div style="display:flex;gap:6px">
+      <button class="btn btn-ghost" style="padding:5px 10px;font-size:12px" onclick="openEntryModal('${e._key}')">Edit</button>
+      <button class="btn btn-danger" style="padding:5px 10px;font-size:12px" onclick="deleteEntry('${e._key}')">Del</button>
+    </div></td>
+  </tr>`).join('');
 
-  tbody.innerHTML = filtered.map(e => `
-    <tr>
-      <td>${e.date}</td>
-      <td style="font-weight:600">${e.vehicleNum}</td>
-      <td>${e.dest||'—'}</td>
-      <td style="color:var(--cyan)">${e.diesel||0}L</td>
-      <td>₹${(e.cash||0).toLocaleString('en-IN')}</td>
-      <td>₹${(e.phonepe||0).toLocaleString('en-IN')}</td>
-      <td>₹${(e.extra||0).toLocaleString('en-IN')}</td>
-      <td style="color:var(--muted);font-size:12px">${e.remarks||'—'}</td>
-      <td>
-        <div style="display:flex;gap:6px">
-          <button class="btn btn-ghost" style="padding:5px 10px;font-size:12px" onclick="openEntryModal('${e._key}')">Edit</button>
-          <button class="btn btn-danger" style="padding:5px 10px;font-size:12px" onclick="deleteEntry('${e._key}')">Del</button>
-        </div>
-      </td>
-    </tr>`).join('');
-
-  const totD = filtered.reduce((s,e)=>s+e.diesel,0);
-  const totC = filtered.reduce((s,e)=>s+e.cash,0);
-  const totP = filtered.reduce((s,e)=>s+e.phonepe,0);
-  const totE = filtered.reduce((s,e)=>s+e.extra,0);
-  tfoot.innerHTML = `
-    <tr class="totals-row">
-      <td colspan="3">TOTAL (${filtered.length} entries)</td>
-      <td>${totD.toFixed(1)}L</td>
-      <td>₹${totC.toLocaleString('en-IN')}</td>
-      <td>₹${totP.toLocaleString('en-IN')}</td>
-      <td>₹${totE.toLocaleString('en-IN')}</td>
-      <td>₹${(totC+totP+totE).toLocaleString('en-IN')}</td>
-      <td></td>
-    </tr>`;
+  const tD=f.reduce((s,e)=>s+(e.diesel||0),0), tC=f.reduce((s,e)=>s+(e.cash||0),0);
+  const tP=f.reduce((s,e)=>s+(e.phonepe||0),0), tE=f.reduce((s,e)=>s+(e.extra||0),0);
+  tfoot.innerHTML = `<tr class="totals-row">
+    <td colspan="3">TOTAL (${f.length} entries)</td>
+    <td>${tD.toFixed(1)}L</td>
+    <td>₹${tC.toLocaleString('en-IN')}</td>
+    <td>₹${tP.toLocaleString('en-IN')}</td>
+    <td>₹${tE.toLocaleString('en-IN')}</td>
+    <td>₹${(tC+tP+tE).toLocaleString('en-IN')}</td>
+    <td></td>
+  </tr>`;
 }
 
 function clearFilters() {
@@ -861,7 +714,7 @@ function clearFilters() {
   renderEntries();
 }
 
-// ── REPORTS ───────────────────────────────────────────────────────────────────
+// ── Reports ───────────────────────────────────────────────────────────────────
 const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 
 function populateYears() {
@@ -870,72 +723,59 @@ function populateYears() {
     const el = document.getElementById(id);
     if (!el) return;
     for (let y = now.getFullYear(); y >= 2020; y--) {
-      const o = document.createElement('option'); o.value = y; o.textContent = y; el.appendChild(o);
+      const o = document.createElement('option'); o.value=y; o.textContent=y; el.appendChild(o);
     }
   });
   const mEl = document.getElementById('report-month');
   if (mEl) {
-    MONTHS.forEach((m,i) => { const o = document.createElement('option'); o.value=i; o.textContent=m; mEl.appendChild(o); });
-    mEl.value = new Date().getMonth();
+    MONTHS.forEach((m,i) => { const o=document.createElement('option'); o.value=i; o.textContent=m; mEl.appendChild(o); });
+    mEl.value = now.getMonth();
   }
   const expM = document.getElementById('exp-month');
-  if (expM) expM.value = new Date().getMonth();
+  if (expM) expM.value = now.getMonth();
 }
 
 function renderReports() {
   const month = parseInt(document.getElementById('report-month').value);
   const year  = parseInt(document.getElementById('report-year').value);
-
-  const filtered = window.entries.filter(e => {
+  const f = entries.filter(e => {
     const d = new Date(e.date);
-    return d.getMonth() === month && d.getFullYear() === year;
-  }).sort((a,b) => a.date.localeCompare(b.date));
+    return d.getMonth()===month && d.getFullYear()===year;
+  }).sort((a,b)=>a.date.localeCompare(b.date));
 
-  const tbody = document.getElementById('report-tbody');
-  const tfoot = document.getElementById('report-tfoot');
-
-  if (!filtered.length) {
-    tbody.innerHTML = `<tr><td colspan="9"><div class="empty">No data for ${MONTHS[month]} ${year}</div></td></tr>`;
-    tfoot.innerHTML = '';
-    return;
+  const tbody=document.getElementById('report-tbody'), tfoot=document.getElementById('report-tfoot');
+  if (!f.length) {
+    tbody.innerHTML=`<tr><td colspan="9"><div class="empty">No data for ${MONTHS[month]} ${year}</div></td></tr>`;
+    tfoot.innerHTML=''; return;
   }
-
-  tbody.innerHTML = filtered.map(e => {
-    const total = e.cash+e.phonepe+e.extra;
-    return `
-    <tr>
-      <td>${e.date}</td>
-      <td style="font-weight:600">${e.vehicleNum}</td>
-      <td>${e.dest||'—'}</td>
+  tbody.innerHTML = f.map(e => {
+    const tot=(e.cash||0)+(e.phonepe||0)+(e.extra||0);
+    return `<tr>
+      <td>${e.date}</td><td style="font-weight:600">${e.vehicleNum}</td><td>${e.dest||'—'}</td>
       <td>${e.diesel||0}L</td>
       <td>₹${(e.cash||0).toLocaleString('en-IN')}</td>
       <td>₹${(e.phonepe||0).toLocaleString('en-IN')}</td>
       <td>₹${(e.extra||0).toLocaleString('en-IN')}</td>
-      <td style="font-weight:600;color:var(--accent)">₹${total.toLocaleString('en-IN')}</td>
+      <td style="font-weight:600;color:var(--accent)">₹${tot.toLocaleString('en-IN')}</td>
       <td style="color:var(--muted);font-size:12px">${e.remarks||'—'}</td>
     </tr>`;
   }).join('');
-
-  const totD=filtered.reduce((s,e)=>s+e.diesel,0);
-  const totC=filtered.reduce((s,e)=>s+e.cash,0);
-  const totP=filtered.reduce((s,e)=>s+e.phonepe,0);
-  const totE=filtered.reduce((s,e)=>s+e.extra,0);
-  tfoot.innerHTML = `
-    <tr class="totals-row">
-      <td colspan="3">TOTAL — ${MONTHS[month]} ${year}</td>
-      <td>${totD.toFixed(1)}L</td>
-      <td>₹${totC.toLocaleString('en-IN')}</td>
-      <td>₹${totP.toLocaleString('en-IN')}</td>
-      <td>₹${totE.toLocaleString('en-IN')}</td>
-      <td>₹${(totC+totP+totE).toLocaleString('en-IN')}</td>
-      <td></td>
-    </tr>`;
+  const tD=f.reduce((s,e)=>s+(e.diesel||0),0), tC=f.reduce((s,e)=>s+(e.cash||0),0);
+  const tP=f.reduce((s,e)=>s+(e.phonepe||0),0), tE=f.reduce((s,e)=>s+(e.extra||0),0);
+  tfoot.innerHTML = `<tr class="totals-row">
+    <td colspan="3">TOTAL — ${MONTHS[month]} ${year}</td>
+    <td>${tD.toFixed(1)}L</td>
+    <td>₹${tC.toLocaleString('en-IN')}</td>
+    <td>₹${tP.toLocaleString('en-IN')}</td>
+    <td>₹${tE.toLocaleString('en-IN')}</td>
+    <td>₹${(tC+tP+tE).toLocaleString('en-IN')}</td>
+    <td></td>
+  </tr>`;
 }
+document.getElementById('report-month').addEventListener('change', renderReports);
+document.getElementById('report-year').addEventListener('change', renderReports);
 
-document.getElementById('report-month')?.addEventListener('change', renderReports);
-document.getElementById('report-year')?.addEventListener('change', renderReports);
-
-// ── EXPORT EXCEL ──────────────────────────────────────────────────────────────
+// ── Export Excel ──────────────────────────────────────────────────────────────
 function openExportModal() {
   document.getElementById('exp-month').value = new Date().getMonth();
   openModal('export-modal');
@@ -944,42 +784,28 @@ function openExportModal() {
 function exportExcel() {
   const month = parseInt(document.getElementById('exp-month')?.value ?? document.getElementById('report-month').value);
   const year  = parseInt(document.getElementById('exp-year')?.value  ?? document.getElementById('report-year').value);
-  const vehicleFilter = document.getElementById('exp-vehicle')?.value || '';
-
-  let filtered = window.entries.filter(e => {
-    const d = new Date(e.date);
-    return d.getMonth()===month && d.getFullYear()===year;
-  });
-  if (vehicleFilter) filtered = filtered.filter(e => e.vehicleKey===vehicleFilter);
-  filtered.sort((a,b)=>a.date.localeCompare(b.date));
-
-  if (!filtered.length) { showAlert('No data for selected period!','error'); return; }
+  const vf = document.getElementById('exp-vehicle')?.value || '';
+  let f = entries.filter(e => { const d=new Date(e.date); return d.getMonth()===month && d.getFullYear()===year; });
+  if (vf) f = f.filter(e => e.vehicleKey===vf);
+  f.sort((a,b)=>a.date.localeCompare(b.date));
+  if (!f.length) { showAlert('No data for selected period!','error'); return; }
 
   const wb = XLSX.utils.book_new();
-
-  // Per-vehicle sheets
-  [...new Set(filtered.map(e=>e.vehicleNum))].forEach(vnum => {
-    const rows = filtered.filter(e=>e.vehicleNum===vnum);
-    const data = [
-      [`Fleet Management Report — ${vnum} — ${MONTHS[month]} ${year}`],[],
-      ['Date','Destination','Status','Diesel (L)','Cash (₹)','PhonePe (₹)','Extra (₹)','Total ₹','Remarks']
-    ];
-    rows.forEach(e => data.push([e.date,e.dest||'',e.status||'',e.diesel||0,e.cash||0,e.phonepe||0,e.extra||0,(e.cash||0)+(e.phonepe||0)+(e.extra||0),e.remarks||'']));
-    data.push(['TOTAL','','',rows.reduce((s,e)=>s+e.diesel,0).toFixed(1),rows.reduce((s,e)=>s+e.cash,0),rows.reduce((s,e)=>s+e.phonepe,0),rows.reduce((s,e)=>s+e.extra,0),rows.reduce((s,e)=>s+e.cash+e.phonepe+e.extra,0),'']);
-    const ws = XLSX.utils.aoa_to_sheet(data);
-    ws['!cols'] = [{wch:12},{wch:20},{wch:12},{wch:12},{wch:12},{wch:14},{wch:12},{wch:12},{wch:30}];
-    XLSX.utils.book_append_sheet(wb, ws, vnum.substring(0,31));
+  [...new Set(f.map(e=>e.vehicleNum))].forEach(vnum => {
+    const rows = f.filter(e=>e.vehicleNum===vnum);
+    const data = [[`Fleet Report — ${vnum} — ${MONTHS[month]} ${year}`],[],
+      ['Date','Destination','Status','Diesel (L)','Cash (₹)','PhonePe (₹)','Extra (₹)','Total ₹','Remarks']];
+    rows.forEach(e=>data.push([e.date,e.dest||'',e.status||'',e.diesel||0,e.cash||0,e.phonepe||0,e.extra||0,(e.cash||0)+(e.phonepe||0)+(e.extra||0),e.remarks||'']));
+    data.push(['TOTAL','','',rows.reduce((s,e)=>s+(e.diesel||0),0).toFixed(1),rows.reduce((s,e)=>s+(e.cash||0),0),rows.reduce((s,e)=>s+(e.phonepe||0),0),rows.reduce((s,e)=>s+(e.extra||0),0),rows.reduce((s,e)=>s+(e.cash||0)+(e.phonepe||0)+(e.extra||0),0),'']);
+    const ws=XLSX.utils.aoa_to_sheet(data); ws['!cols']=[{wch:12},{wch:20},{wch:12},{wch:12},{wch:12},{wch:14},{wch:12},{wch:12},{wch:30}];
+    XLSX.utils.book_append_sheet(wb,ws,vnum.substring(0,31));
   });
-
-  // All entries sheet
-  const all = [[`Complete Fleet Report — ${MONTHS[month]} ${year}`],[],['Date','Vehicle','Destination','Status','Diesel (L)','Cash (₹)','PhonePe (₹)','Extra (₹)','Total ₹','Remarks']];
-  filtered.forEach(e=>all.push([e.date,e.vehicleNum,e.dest||'',e.status||'',e.diesel||0,e.cash||0,e.phonepe||0,e.extra||0,(e.cash||0)+(e.phonepe||0)+(e.extra||0),e.remarks||'']));
-  all.push(['TOTAL','','','',filtered.reduce((s,e)=>s+e.diesel,0).toFixed(1),filtered.reduce((s,e)=>s+e.cash,0),filtered.reduce((s,e)=>s+e.phonepe,0),filtered.reduce((s,e)=>s+e.extra,0),filtered.reduce((s,e)=>s+e.cash+e.phonepe+e.extra,0),'']);
-  const wsAll = XLSX.utils.aoa_to_sheet(all);
-  wsAll['!cols'] = [{wch:12},{wch:14},{wch:20},{wch:12},{wch:12},{wch:12},{wch:14},{wch:12},{wch:12},{wch:30}];
-  XLSX.utils.book_append_sheet(wb, wsAll, 'All Entries');
-
-  XLSX.writeFile(wb, `Fleet_Report_${MONTHS[month]}_${year}.xlsx`);
+  const all=[[`Complete Fleet Report — ${MONTHS[month]} ${year}`],[],['Date','Vehicle','Destination','Status','Diesel (L)','Cash (₹)','PhonePe (₹)','Extra (₹)','Total ₹','Remarks']];
+  f.forEach(e=>all.push([e.date,e.vehicleNum,e.dest||'',e.status||'',e.diesel||0,e.cash||0,e.phonepe||0,e.extra||0,(e.cash||0)+(e.phonepe||0)+(e.extra||0),e.remarks||'']));
+  all.push(['TOTAL','','','',f.reduce((s,e)=>s+(e.diesel||0),0).toFixed(1),f.reduce((s,e)=>s+(e.cash||0),0),f.reduce((s,e)=>s+(e.phonepe||0),0),f.reduce((s,e)=>s+(e.extra||0),0),f.reduce((s,e)=>s+(e.cash||0)+(e.phonepe||0)+(e.extra||0),0),'']);
+  const wsAll=XLSX.utils.aoa_to_sheet(all); wsAll['!cols']=[{wch:12},{wch:14},{wch:20},{wch:12},{wch:12},{wch:12},{wch:14},{wch:12},{wch:12},{wch:30}];
+  XLSX.utils.book_append_sheet(wb,wsAll,'All Entries');
+  XLSX.writeFile(wb,`Fleet_Report_${MONTHS[month]}_${year}.xlsx`);
   closeModal('export-modal');
   showAlert('Excel exported successfully!');
 }
